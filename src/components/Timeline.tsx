@@ -15,6 +15,15 @@ export function Timeline() {
   const timelineZoom = useStore((s) => s.timelineZoom);
   const playing = useStore((s) => s.playing);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const px = timelineZoom;
+
+  // 播放时自动跟随播放头（hooks 必须位于 early return 之前）
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !playing) return;
+    const target = playhead * px - el.clientWidth / 2;
+    el.scrollLeft = Math.max(0, target);
+  }, [playhead, playing, px]);
 
   if (!document) {
     return (
@@ -24,7 +33,6 @@ export function Timeline() {
     );
   }
   const fps = document.canvas.fps;
-  const px = timelineZoom;
   const path = playbackPath && playbackPath.length > 0 ? playbackPath : linearizeDefaultPath(document.script);
   const spans = buildLineSequence(document.script, path);
   const pathSpans = buildPathSpans(document.script, path);
@@ -35,14 +43,6 @@ export function Timeline() {
     const n = document.script.nodes.find((x) => x.id === nodeId);
     return n?.type ?? "script";
   };
-
-  // 播放时自动跟随播放头
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !playing) return;
-    const target = playhead * px - el.clientWidth / 2;
-    el.scrollLeft = Math.max(0, target);
-  }, [playhead, playing, px]);
 
   const currentSpan = spans.find(
     (s) => playhead >= s.startFrame && playhead < s.startFrame + s.durationFrames,

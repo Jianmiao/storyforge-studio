@@ -10,6 +10,7 @@ import { ExportDialog } from "./components/ExportDialog";
 import { StatusBar } from "./components/StatusBar";
 import { PlaybackChoiceOverlay } from "./components/PlaybackChoiceOverlay";
 import { Toast } from "./components/Toast";
+import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { useStore } from "./state/store";
 import { getBackend } from "./backend";
 import { useKeyboard } from "./hooks/useKeyboard";
@@ -50,9 +51,11 @@ export default function App() {
         <AssetLibrary />
       </div>
       <div className="center-area">
-        <NodeGraphView />
-        <CanvasView />
-        <PropertiesPanel />
+        <ErrorBoundary>
+          <NodeGraphView />
+          <CanvasView />
+          <PropertiesPanel />
+        </ErrorBoundary>
       </div>
       <Timeline />
       <StatusBar />

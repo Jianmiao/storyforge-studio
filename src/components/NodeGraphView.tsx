@@ -52,6 +52,15 @@ export function NodeGraphView() {
   const graph = document?.script;
   const nodes = graph?.nodes ?? [];
 
+  // 连线集合（必须放在所有 hooks 之后、early return 之前 —— Hooks 规则）
+  const edges = useMemo(() => {
+    const out: { from: string; to: string }[] = [];
+    for (const n of nodes) {
+      for (const to of n.next) out.push({ from: n.id, to });
+    }
+    return out;
+  }, [nodes]);
+
   // 当前播放节点（高亮）
   const activeNodeId = useMemo(() => {
     if (!document || !playing) return null;
@@ -64,15 +73,6 @@ export function NodeGraphView() {
   if (!document) {
     return <div className="node-graph-view empty-hint">新建或打开项目后编辑剧本。</div>;
   }
-
-  // 连线集合
-  const edges = useMemo(() => {
-    const out: { from: string; to: string }[] = [];
-    for (const n of nodes) {
-      for (const to of n.next) out.push({ from: n.id, to });
-    }
-    return out;
-  }, [nodes]);
 
   const posOf = (id: string) => nodes.find((n) => n.id === id);
 

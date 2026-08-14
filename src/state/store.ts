@@ -4,7 +4,7 @@ import type { Command, ProjectDraft } from "../domain/commands";
 import { History } from "../domain/history";
 import { defaultProject, type StudioProject } from "../domain/types";
 import { validateProject } from "../domain/schema";
-import { linearizeDefaultPath, nodeOf } from "../domain/graph";
+import { linearizeDefaultPath, nodeOf, totalFramesOfPath } from "../domain/graph";
 import { getBackend } from "../backend";
 import type { FfmpegInfo, RenderJobInfo } from "../backend/types";
 import { ProjectPaths } from "../domain/paths";
@@ -104,6 +104,21 @@ function activeSceneOf(doc: StudioProject | null, activeSceneId: string | null) 
   return doc.scenes.find((s) => s.id === activeSceneId) ?? doc.scenes[0] ?? null;
 }
 
+/** 播放头上限（v2：剧本路径总帧数；v1：场景时长）。 */
+function maxPlayheadOf(state: EditorState): number {
+  const doc = state.document;
+  if (!doc) return 0;
+  if (doc.script.entryNodeId && doc.script.nodes.length > 0) {
+    const path =
+      state.playbackPath && state.playbackPath.length > 0
+        ? state.playbackPath
+        : linearizeDefaultPath(doc.script);
+    return Math.max(0, totalFramesOfPath(doc.script, path) - 1);
+  }
+  const scene = activeSceneOf(doc, state.activeSceneId);
+  return scene ? Math.max(0, scene.durationFrames - 1) : 0;
+}
+
 export const useStore = create<EditorState>((set, get) => ({
   document: null,
   projectPath: null,
@@ -133,19 +148,19 @@ export const useStore = create<EditorState>((set, get) => ({
   executeCommand(cmd) {
     const state = get();
     if (!state.document) return;
-    const scene = activeSceneOf(state.document, state.activeSceneId);
     const nextDoc = produce(state.document, (draft) => {
       cmd.apply(draft as ProjectDraft);
     });
     history.execute(cmd);
     const commandVersion = state.commandVersion + 1;
+    const maxPlayhead = maxPlayheadOf(state);
     set({
       document: nextDoc,
       dirty: true,
       commandVersion,
       undoDepth: history.undoDepth(),
       redoDepth: history.redoDepth(),
-      playhead: scene ? Math.min(state.playhead, scene.durationFrames - 1) : state.playhead,
+      playhead: Math.min(state.playhead, maxPlayhead),
     });
     scheduleAutosave();
   },
@@ -366,8 +381,7 @@ export const useStore = create<EditorState>((set, get) => ({
 
   setPlayhead(frame) {
     const state = get();
-    const scene = activeSceneOf(state.document, state.activeSceneId);
-    const max = scene ? scene.durationFrames - 1 : 0;
+    const max = maxPlayheadOf(state);
     set({ playhead: Math.max(0, Math.min(frame, max)) });
   },
 
