@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+dist/
+target/
+
+# Tauri
+src-tauri/gen/schemas/
+src-tauri/target/
+
+# Test artifacts
+test-results/
+playwright-report/
+*.mp4
+*.pcm
+*.tmp
+e2e/.tmp/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
