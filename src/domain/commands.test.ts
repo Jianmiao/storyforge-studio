@@ -5,8 +5,17 @@ import { defaultProject, type ImageClip, type StudioProject } from "./types";
 
 function setup(): { doc: StudioProject; history: History; sceneId: string; trackId: string } {
   const doc = defaultProject("测试");
+  // 测试用时间轴兼容结构：手动添加场景与轨道
+  doc.scenes.push({
+    id: "scn_test",
+    name: "测试场景",
+    durationFrames: 300,
+    tracks: [
+      { id: "trk_test", kind: "character", name: "角色", muted: false, clips: [] },
+    ],
+  });
   const history = new History();
-  return { doc, history, sceneId: doc.scenes[0].id, trackId: doc.scenes[0].tracks[0].id };
+  return { doc, history, sceneId: "scn_test", trackId: "trk_test" };
 }
 
 describe("命令撤销/重做（命令模式）", () => {

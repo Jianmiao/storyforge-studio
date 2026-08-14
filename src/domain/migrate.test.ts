@@ -41,9 +41,9 @@ function v0Fixture() {
 }
 
 describe("项目迁移", () => {
-  it("v0 → v1：补版本、清文件名前缀、迁移 image 属性", () => {
+  it("v0 → v2：补版本、清文件名前缀、迁移 image 属性、补剧本图", () => {
     const doc = migrateProject(v0Fixture());
-    expect(doc.formatVersion).toBe(1);
+    expect(doc.formatVersion).toBe(2);
     expect(doc.assets[0].fileName).toBe("old.png");
     const clip = doc.scenes[0].tracks[0].clips[0] as unknown as ImageClip;
     expect(clip.props.x).toBe(100);
@@ -53,11 +53,32 @@ describe("项目迁移", () => {
     expect(clip.props.opacity).toBe(0.5);
     expect((clip as unknown as Record<string, unknown>).transform).toBeUndefined();
     expect(clip.actions.enter).toBe("none");
+    // v2 新增空剧本图
+    expect(doc.script.nodes).toEqual([]);
   });
 
-  it("v1 文档原样通过", () => {
-    const doc = migrateProject({ formatVersion: 1, meta: { name: "x" }, scenes: [], assets: [] });
-    expect(doc.formatVersion).toBe(1);
+  it("v1 → v2：补剧本图并保留时间轴场景", () => {
+    const doc = migrateProject({
+      formatVersion: 1,
+      meta: { name: "x" },
+      canvas: { width: 100, height: 100, fps: 30 },
+      assets: [],
+      scenes: [{ id: "s1", name: "S", durationFrames: 100, tracks: [] }],
+      export: { width: 100, height: 100, fps: 30, videoCodec: "h264", crf: 18, preset: "veryfast", audioBitrateKbps: 192 },
+    });
+    expect(doc.formatVersion).toBe(2);
+    expect(doc.scenes[0].id).toBe("s1");
+    expect(doc.script.entryNodeId).toBeNull();
+  });
+
+  it("v2 文档原样通过", () => {
+    const doc = migrateProject({
+      formatVersion: 2,
+      meta: { name: "x" },
+      scenes: [],
+      script: { nodes: [], entryNodeId: null },
+    });
+    expect(doc.formatVersion).toBe(2);
   });
 
   it("更高版本拒绝打开", () => {
@@ -65,13 +86,14 @@ describe("项目迁移", () => {
   });
 
   it("缺少 formatVersion 按 v0 兼容迁移", () => {
-    // 历史夹具无 formatVersion：视为 v0，迁移后补 v1
+    // 历史夹具无 formatVersion：视为 v0，迁移后到 v2
     const doc = migrateProject({ meta: { name: "旧" }, canvas: { width: 100, height: 100, fps: 30 }, assets: [], scenes: [] });
-    expect(doc.formatVersion).toBe(1);
+    expect(doc.formatVersion).toBe(2);
+    expect(doc.script.nodes).toEqual([]);
   });
 
   it("迁移链注册表完整", () => {
-    expect(latestFormatVersion()).toBe(1);
-    expect(migrations.map((m) => `${m.from}->${m.to}`)).toEqual(["0->1"]);
+    expect(latestFormatVersion()).toBe(2);
+    expect(migrations.map((m) => `${m.from}->${m.to}`)).toEqual(["0->1", "1->2"]);
   });
 });

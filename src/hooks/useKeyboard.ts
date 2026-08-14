@@ -3,7 +3,12 @@ import { getBackend } from "../backend";
 import { useStore } from "../state/store";
 import { findClipInScene } from "../domain/types";
 import { newClipId } from "../domain/id";
-import { AddClipCommand, RemoveAssetCommand, RemoveClipCommand } from "../domain/commands";
+import {
+  AddClipCommand,
+  RemoveAssetCommand,
+  RemoveClipCommand,
+  RemoveGraphNodeCommand,
+} from "../domain/commands";
 import type { Clip } from "../domain/types";
 
 /** 剪贴板（模块级）：复制/粘贴片段。 */
@@ -57,7 +62,14 @@ export function useKeyboard() {
       }
       if ((e.key === "Delete" || e.key === "Backspace") && !mod) {
         e.preventDefault();
-        if (st.selectedClipId && st.document) {
+        if (st.selectedNodeId && st.document) {
+          // 节点模式：删除剧本节点（含清理连接）
+          const node = st.document.script.nodes.find((n) => n.id === st.selectedNodeId);
+          if (node) {
+            st.executeCommand(new RemoveGraphNodeCommand(node));
+            st.selectNode(null);
+          }
+        } else if (st.selectedClipId && st.document) {
           const scene = st.document.scenes.find((s) => s.id === st.activeSceneId) ?? st.document.scenes[0];
           const found = scene && findClipInScene(scene, st.selectedClipId);
           if (found) {

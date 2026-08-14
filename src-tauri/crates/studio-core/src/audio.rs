@@ -215,3 +215,44 @@ pub fn load_audios(project: &crate::model::Project, project_dir: &Path) -> HashM
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::demo::create_demo;
+
+    #[test]
+    fn decode_demo_bgm_produces_signal() {
+        let dir = std::env::temp_dir().join(format!("sf-audio-dbg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let result = create_demo(&dir).unwrap();
+        let path = dir.join("assets").join("demo-bgm.wav");
+        let decoded = decode_audio_file(&path).expect("解码 demo-bgm.wav");
+        assert!(decoded.duration_ms > 0, "时长应为正: {}", decoded.duration_ms);
+        // 220Hz 正弦应有实际信号
+        let peak = decoded
+            .l
+            .iter()
+            .chain(decoded.r.iter())
+            .map(|s| s.abs())
+            .fold(0.0_f32, |a, b| a.max(b));
+        assert!(peak > 0.05, "峰值过低: {peak}");
+        // 混音器输出同样应有信号
+        let mut audios = HashMap::new();
+        audios.insert("ast_bgm".to_string(), decoded);
+        let mut mixer = AudioMixer::new(audios, 30, 360);
+        let project = result.project;
+        let path2 = crate::graph::linearize_default_path(&project.script);
+        for frame in 0..360 {
+            let desc = crate::graph::evaluate(&project, &path2, frame);
+            mixer.add_frame(&desc, frame);
+        }
+        let peak_out = mixer
+            .out
+            .iter()
+            .map(|s| s.abs())
+            .fold(0.0_f32, |a, b| a.max(b));
+        assert!(peak_out > 0.01, "混音输出峰值过低: {peak_out}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

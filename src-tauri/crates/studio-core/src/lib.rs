@@ -6,6 +6,7 @@ pub mod compositor;
 pub mod demo;
 pub mod encoder;
 pub mod ffmpeg;
+pub mod graph;
 pub mod migrate;
 pub mod model;
 pub mod project_io;

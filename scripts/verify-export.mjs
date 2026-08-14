@@ -103,14 +103,14 @@ const meanMatch = /mean_volume: (-?[\d.]+) dB/.exec(vol.stderr ?? "");
 const meanVol = meanMatch ? parseFloat(meanMatch[1]) : -91;
 checks.push(["音频含实际信号（mean_volume > -80 dB）", meanVol > -80]);
 
-// 5) 字幕渲染检测（第 90 帧应有文字：非全黑且中央区域有亮度差异）
+// 5) 字幕渲染检测（第 90 帧应有文字：字幕区域同时存在暗（描边/背景）与亮（白字）像素）
 const frameFile = join(outDir, "frame90.png");
-spawnSync(ffmpegPath, ["-v", "quiet", "-y", "-i", outMp4, "-vf", "select=eq(n\\,90)", "-vframes", "1", frameFile]);
+spawnSync(ffmpegPath, ["-hide_banner", "-y", "-i", outMp4, "-vf", "select=eq(n\\,90)", "-vframes", "1", frameFile], { encoding: "utf8" });
 let subtitleOk = false;
 if (existsSync(frameFile)) {
-  const sig = spawnSync(ffmpegPath, ["-v", "quiet", "-i", frameFile, "-vf", "crop=1200:120:360:850,signalstats", "-f", "null", "-"], { encoding: "utf8" });
-  const yminMatch = /YMIN:(\d+)/.exec(sig.stderr ?? "");
-  const ymaxMatch = /YMAX:(\d+)/.exec(sig.stderr ?? "");
+  const sig = spawnSync(ffmpegPath, ["-hide_banner", "-i", frameFile, "-vf", "signalstats,metadata=print", "-f", "null", "-"], { encoding: "utf8" });
+  const yminMatch = /YMIN=(\d+)/.exec(sig.stderr ?? "");
+  const ymaxMatch = /YMAX=(\d+)/.exec(sig.stderr ?? "");
   if (yminMatch && ymaxMatch) {
     const ymin = parseInt(yminMatch[1]);
     const ymax = parseInt(ymaxMatch[1]);

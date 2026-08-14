@@ -1,13 +1,11 @@
-//! 演示项目生成：全部素材在本地程序化合成（渐变背景 / 角色剪影 / 正弦 BGM / 提示音），
+//! 演示项目生成（v2 节点式剧本）：全部素材在本地程序化合成（渐变背景 / 角色剪影 / 正弦 BGM / 提示音），
 //! 不下载、不捆绑任何第三方素材。用于离线渲染验收样例。
 
 use crate::model::{
-    ActionType, Actions, AssetKind, AssetRecord, AudioClip, CameraClip, CameraProps, CanvasConfig,
-    Clip, CropRect, EffectClip, EffectSpec, EffectType, Easing, ExportConfig, ImageClip, KeyValue,
-    Keyframe, Meta, Project, Scene, SubtitleClip, Track, TrackKind, VisualProps,
+    AssetKind, AssetRecord, CanvasConfig, CharacterLineRef, ExportConfig, GraphNode, GraphNodeType,
+    Meta, Project, ScriptGraph, ScriptLine,
 };
 use crate::project_io::save_project_atomic;
-use std::collections::HashMap;
 use std::path::Path;
 
 #[derive(Debug, thiserror::Error)]
@@ -26,9 +24,47 @@ pub struct DemoCreateResult {
 }
 
 const DEMO_FPS: u32 = 30;
-const DEMO_FRAMES: u32 = 360; // 12 秒
 
-/// 创建演示项目目录 + 素材 + 项目文件。
+fn line(
+    id: &str,
+    text: &str,
+    speaker: &str,
+    characters: Vec<CharacterLineRef>,
+    bg_asset_id: Option<&str>,
+    bg_effect: &str,
+    bgm_asset_id: Option<&str>,
+    voice_asset_id: Option<&str>,
+    sound_asset_id: Option<&str>,
+    transition: &str,
+    duration_frames: i64,
+    place_text: &str,
+) -> ScriptLine {
+    ScriptLine {
+        id: id.into(),
+        text: text.into(),
+        speaker: speaker.into(),
+        characters,
+        bg_asset_id: bg_asset_id.map(|s| s.into()),
+        bg_effect: bg_effect.into(),
+        bgm_asset_id: bgm_asset_id.map(|s| s.into()),
+        voice_asset_id: voice_asset_id.map(|s| s.into()),
+        sound_asset_id: sound_asset_id.map(|s| s.into()),
+        transition: transition.into(),
+        duration_frames,
+        place_text: place_text.into(),
+    }
+}
+
+fn char_ref(asset_id: &str, slot: i64, action: &str) -> CharacterLineRef {
+    CharacterLineRef {
+        asset_id: asset_id.into(),
+        slot,
+        action: action.into(),
+        scale: 1.0,
+    }
+}
+
+/// 创建演示项目目录 + 素材 + 项目文件（节点式剧本，默认路径 360 帧 = 12 秒）。
 pub fn create_demo(project_dir: &Path) -> Result<DemoCreateResult, DemoError> {
     std::fs::create_dir_all(project_dir.join("assets"))?;
 
@@ -107,7 +143,8 @@ pub fn create_demo(project_dir: &Path) -> Result<DemoCreateResult, DemoError> {
         },
         canvas: CanvasConfig { width: 1920, height: 1080, fps: DEMO_FPS },
         assets,
-        scenes: vec![demo_scene()],
+        script: demo_graph(),
+        scenes: vec![],
         export: ExportConfig {
             width: 1920,
             height: 1080,
@@ -127,267 +164,145 @@ pub fn create_demo(project_dir: &Path) -> Result<DemoCreateResult, DemoError> {
     })
 }
 
-fn kf(frame: i64, path: &str, value: f64) -> Keyframe {
-    Keyframe {
-        frame,
-        path: path.into(),
-        value: KeyValue::Number(value),
-        easing: Easing {
-            easing_type: "linear".into(),
-            c1: None,
-            c2: None,
-        },
-    }
-}
-
-fn demo_scene() -> Scene {
-    let frames = DEMO_FRAMES as i64;
-    let defaults = || VisualProps {
-        x: 960.0,
-        y: 540.0,
-        scale_x: 1.0,
-        scale_y: 1.0,
-        rotation: 0.0,
-        opacity: 1.0,
-        tint: [255, 255, 255],
-        blur: 0.0,
-        crop: CropRect { left: 0.0, right: 0.0, top: 0.0, bottom: 0.0 },
-        flip_x: false,
-    };
-
-    Scene {
-        id: "scn_demo".into(),
-        name: "演示场景".into(),
-        duration_frames: DEMO_FRAMES,
-        tracks: vec![
-            Track {
-                id: "trk_background".into(),
-                kind: TrackKind::Background,
-                name: "背景".into(),
-                muted: false,
-                clips: vec![Clip::Image(ImageClip {
-                    id: "clp_bg".into(),
-                    name: "渐变背景".into(),
-                    start: 0,
-                    duration: frames,
-                    keyframes: vec![
-                        kf(0, "props.opacity", 0.0),
-                        kf(30, "props.opacity", 1.0),
-                        kf(330, "props.opacity", 1.0),
-                        kf(frames, "props.opacity", 0.0),
-                    ],
-                    asset_id: "ast_bg".into(),
-                    props: defaults(),
-                    actions: Actions { enter: ActionType::None, idle: ActionType::None, exit: ActionType::None },
-                })],
+fn demo_graph() -> ScriptGraph {
+    ScriptGraph {
+        entry_node_id: Some("nd_entry".into()),
+        nodes: vec![
+            GraphNode {
+                id: "nd_entry".into(),
+                node_type: GraphNodeType::Entry,
+                x: 60.0,
+                y: 260.0,
+                title: "开场".into(),
+                header: Some("演示剧本".into()),
+                end_text: None,
+                lines: None,
+                options: None,
+                next: vec!["nd_open".into()],
             },
-            Track {
-                id: "trk_character".into(),
-                kind: TrackKind::Character,
-                name: "角色".into(),
-                muted: false,
-                clips: vec![Clip::Image(ImageClip {
-                    id: "clp_char".into(),
-                    name: "角色立绘".into(),
-                    start: 0,
-                    duration: frames,
-                    keyframes: vec![
-                        kf(0, "props.x", 300.0),
-                        kf(30, "props.x", 960.0),
-                        kf(0, "props.opacity", 0.0),
-                        kf(30, "props.opacity", 1.0),
-                        kf(150, "props.scaleX", 1.1),
-                        kf(165, "props.scaleX", 1.2),
-                        kf(180, "props.scaleX", 1.1),
-                        kf(150, "props.scaleY", 1.1),
-                        kf(165, "props.scaleY", 1.2),
-                        kf(180, "props.scaleY", 1.1),
-                        kf(330, "props.x", 960.0),
-                        kf(frames, "props.x", 1620.0),
-                        kf(330, "props.opacity", 1.0),
-                        kf(frames, "props.opacity", 0.0),
-                    ],
-                    asset_id: "ast_char".into(),
-                    props: VisualProps {
-                        x: 960.0,
-                        y: 540.0,
-                        scale_x: 1.1,
-                        scale_y: 1.1,
-                        rotation: 0.0,
-                        opacity: 1.0,
-                        tint: [255, 255, 255],
-                        blur: 0.0,
-                        crop: CropRect { left: 0.0, right: 0.0, top: 0.0, bottom: 0.0 },
-                        flip_x: false,
-                    },
-                    actions: Actions { enter: ActionType::None, idle: ActionType::Sway, exit: ActionType::None },
-                })],
+            GraphNode {
+                id: "nd_open".into(),
+                node_type: GraphNodeType::Script,
+                x: 300.0,
+                y: 260.0,
+                title: "开场演出".into(),
+                header: None,
+                end_text: None,
+                lines: Some(vec![line(
+                    "ln_open",
+                    "夜色降临，故事开始。",
+                    "",
+                    vec![char_ref("ast_char", 1, "sway")],
+                    Some("ast_bg"),
+                    "none",
+                    Some("ast_bgm"),
+                    None,
+                    None,
+                    "fade",
+                    120,
+                    "小镇广场",
+                )]),
+                options: None,
+                next: vec!["nd_dialog".into()],
             },
-            Track {
-                id: "trk_camera".into(),
-                kind: TrackKind::Camera,
-                name: "镜头".into(),
-                muted: false,
-                clips: vec![Clip::Camera(CameraClip {
-                    id: "clp_cam".into(),
-                    name: "镜头推近".into(),
-                    start: 0,
-                    duration: frames,
-                    keyframes: vec![
-                        kf(0, "zoom", 1.0),
-                        kf(frames, "zoom", 1.06),
-                        kf(0, "props.x", 0.0),
-                        kf(frames, "props.x", 30.0),
-                    ],
-                    props: CameraProps { x: 0.0, y: 0.0, zoom: 1.0 },
-                })],
+            GraphNode {
+                id: "nd_dialog".into(),
+                node_type: GraphNodeType::Script,
+                x: 540.0,
+                y: 260.0,
+                title: "第一段对话".into(),
+                header: None,
+                end_text: None,
+                lines: Some(vec![line(
+                    "ln_d1",
+                    "欢迎来到 StoryForge，旅人。",
+                    "领航员",
+                    vec![char_ref("ast_char", 1, "sway")],
+                    None,
+                    "none",
+                    None,
+                    None,
+                    None,
+                    "none",
+                    120,
+                    "",
+                )]),
+                options: None,
+                next: vec!["nd_choice".into()],
             },
-            Track {
-                id: "trk_subtitle".into(),
-                kind: TrackKind::Subtitle,
-                name: "字幕".into(),
-                muted: false,
-                clips: vec![
-                    Clip::Subtitle(SubtitleClip {
-                        id: "clp_sub1".into(),
-                        name: "台词 1".into(),
-                        start: 60,
-                        duration: 120,
-                        keyframes: vec![],
-                        text: "第一段台词：欢迎来到 StoryForge。".into(),
-                        x: 960.0,
-                        y: 940.0,
-                        font_size: 56.0,
-                        color: "#ffffff".into(),
-                        align: "center".into(),
-                        outline_width: 4.0,
-                        opacity: 1.0,
-                    }),
-                    Clip::Subtitle(SubtitleClip {
-                        id: "clp_sub2".into(),
-                        name: "台词 2".into(),
-                        start: 180,
-                        duration: 120,
-                        keyframes: vec![],
-                        text: "第二段台词：离线渲染验收样例。".into(),
-                        x: 960.0,
-                        y: 940.0,
-                        font_size: 56.0,
-                        color: "#ffffff".into(),
-                        align: "center".into(),
-                        outline_width: 4.0,
-                        opacity: 1.0,
-                    }),
-                ],
+            GraphNode {
+                id: "nd_choice".into(),
+                node_type: GraphNodeType::Selection,
+                x: 780.0,
+                y: 260.0,
+                title: "选择".into(),
+                header: None,
+                end_text: None,
+                lines: None,
+                options: Some(vec!["进入支线剧情".into(), "直接结束".into()]),
+                next: vec!["nd_branchA".into(), "nd_branchB".into()],
             },
-            Track {
-                id: "trk_bgm".into(),
-                kind: TrackKind::Bgm,
-                name: "BGM".into(),
-                muted: false,
-                clips: vec![Clip::Audio(AudioClip {
-                    id: "clp_bgm".into(),
-                    name: "演示 BGM".into(),
-                    start: 0,
-                    duration: frames,
-                    keyframes: vec![],
-                    asset_id: "ast_bgm".into(),
-                    volume: 0.7,
-                    fade_in_frames: 30,
-                    fade_out_frames: 60,
-                })],
+            GraphNode {
+                id: "nd_branchA".into(),
+                node_type: GraphNodeType::Script,
+                x: 1020.0,
+                y: 160.0,
+                title: "支线剧情".into(),
+                header: None,
+                end_text: None,
+                lines: Some(vec![line(
+                    "ln_a1",
+                    "你选择了支线——一道闪光划过夜空。",
+                    "领航员",
+                    vec![char_ref("ast_char", 1, "flashWhite")],
+                    None,
+                    "blur",
+                    None,
+                    None,
+                    Some("ast_sfx"),
+                    "fade",
+                    120,
+                    "广场·夜晚",
+                )]),
+                options: None,
+                next: vec!["nd_exit".into()],
             },
-            Track {
-                id: "trk_voice".into(),
-                kind: TrackKind::Voice,
-                name: "语音".into(),
-                muted: false,
-                clips: vec![Clip::Audio(AudioClip {
-                    id: "clp_sfx".into(),
-                    name: "提示音".into(),
-                    start: 60,
-                    duration: 18,
-                    keyframes: vec![],
-                    asset_id: "ast_sfx".into(),
-                    volume: 0.9,
-                    fade_in_frames: 2,
-                    fade_out_frames: 6,
-                })],
+            GraphNode {
+                id: "nd_branchB".into(),
+                node_type: GraphNodeType::Script,
+                x: 1020.0,
+                y: 380.0,
+                title: "直接结束".into(),
+                header: None,
+                end_text: None,
+                lines: Some(vec![line(
+                    "ln_b1",
+                    "你选择了直接结束。故事留待来日。",
+                    "领航员",
+                    vec![char_ref("ast_char", 1, "sway")],
+                    None,
+                    "none",
+                    None,
+                    None,
+                    None,
+                    "fade",
+                    120,
+                    "",
+                )]),
+                options: None,
+                next: vec!["nd_exit".into()],
             },
-            Track {
-                id: "trk_sfx".into(),
-                kind: TrackKind::Sfx,
-                name: "音效".into(),
-                muted: false,
-                clips: vec![],
-            },
-            Track {
-                id: "trk_effect".into(),
-                kind: TrackKind::Effect,
-                name: "特效".into(),
-                muted: false,
-                clips: vec![
-                    Clip::Effect(EffectClip {
-                        id: "clp_vig".into(),
-                        name: "暗角".into(),
-                        start: 0,
-                        duration: frames,
-                        keyframes: vec![],
-                        effect: EffectSpec {
-                            effect_type: EffectType::Vignette,
-                            params: HashMap::from([
-                                ("strength".into(), serde_json::json!(0.5)),
-                                ("softness".into(), serde_json::json!(0.7)),
-                            ]),
-                        },
-                    }),
-                    Clip::Effect(EffectClip {
-                        id: "clp_flash".into(),
-                        name: "闪白".into(),
-                        start: 150,
-                        duration: 15,
-                        keyframes: vec![
-                            kf(0, "effect.params.alpha", 0.0),
-                            kf(6, "effect.params.alpha", 0.9),
-                            kf(15, "effect.params.alpha", 0.0),
-                        ],
-                        effect: EffectSpec {
-                            effect_type: EffectType::Flash,
-                            params: HashMap::from([("alpha".into(), serde_json::json!(0.9))]),
-                        },
-                    }),
-                    Clip::Effect(EffectClip {
-                        id: "clp_shake".into(),
-                        name: "震动".into(),
-                        start: 150,
-                        duration: 20,
-                        keyframes: vec![],
-                        effect: EffectSpec {
-                            effect_type: EffectType::Shake,
-                            params: HashMap::from([
-                                ("amplitude".into(), serde_json::json!(8.0)),
-                                ("frequency".into(), serde_json::json!(30.0)),
-                            ]),
-                        },
-                    }),
-                    Clip::Effect(EffectClip {
-                        id: "clp_trans".into(),
-                        name: "转场（结尾淡出）".into(),
-                        start: 330,
-                        duration: 30,
-                        keyframes: vec![
-                            kf(0, "effect.params.alpha", 0.0),
-                            kf(30, "effect.params.alpha", 1.0),
-                        ],
-                        effect: EffectSpec {
-                            effect_type: EffectType::Transition,
-                            params: HashMap::from([
-                                ("color".into(), serde_json::json!("#000000")),
-                                ("alpha".into(), serde_json::json!(0.0)),
-                            ]),
-                        },
-                    }),
-                ],
+            GraphNode {
+                id: "nd_exit".into(),
+                node_type: GraphNodeType::Exit,
+                x: 1260.0,
+                y: 260.0,
+                title: "结束".into(),
+                header: None,
+                end_text: Some("全剧终".into()),
+                lines: None,
+                options: None,
+                next: vec![],
             },
         ],
     }
@@ -453,8 +368,15 @@ fn character_png(w: u32, h: u32) -> Vec<u8> {
 
 fn encode_png(img: &image::RgbaImage) -> Vec<u8> {
     let mut buf = std::io::Cursor::new(Vec::new());
-    image::write_buffer_with_format(&mut buf, img.as_raw(), img.width(), img.height(), image::ExtendedColorType::Rgba8, image::ImageFormat::Png)
-        .expect("PNG 编码失败");
+    image::write_buffer_with_format(
+        &mut buf,
+        img.as_raw(),
+        img.width(),
+        img.height(),
+        image::ExtendedColorType::Rgba8,
+        image::ImageFormat::Png,
+    )
+    .expect("PNG 编码失败");
     buf.into_inner()
 }
 
@@ -489,7 +411,6 @@ fn tone_wav(freq: f32, duration_ms: u64, volume: f32) -> Vec<u8> {
 }
 
 fn iso_now() -> String {
-    // 简单 UTC ISO8601（无 chrono 依赖）
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();

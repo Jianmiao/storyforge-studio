@@ -3,6 +3,7 @@ import { serializeProject, parseProject, deepEqual } from "./serialize";
 import { defaultProject } from "./types";
 import { validateProject } from "./schema";
 import { buildDemoProject } from "./demo";
+import { buildLineSequence, linearizeDefaultPath } from "./graph";
 import { ProjectPaths, joinSegments } from "./paths";
 
 describe("序列化 roundtrip", () => {
@@ -24,30 +25,18 @@ describe("序列化 roundtrip", () => {
 });
 
 describe("演示项目文档", () => {
-  it("结构合法且通过校验", () => {
+  it("结构合法且通过校验（v2 节点式剧本）", () => {
     const doc = buildDemoProject("2026-01-01T00:00:00Z");
-    expect(doc.formatVersion).toBe(1);
-    expect(doc.scenes).toHaveLength(1);
-    expect(doc.scenes[0].durationFrames).toBe(360);
+    expect(doc.formatVersion).toBe(2);
+    expect(doc.script.nodes.length).toBeGreaterThanOrEqual(3);
+    expect(doc.script.entryNodeId).toBe("nd_entry");
     expect(validateProject(doc)).toEqual([]);
-    // 关键帧按 path 分组内排序
-    for (const scene of doc.scenes) {
-      for (const track of scene.tracks) {
-        for (const clip of track.clips) {
-          const byPath = new Map<string, number[]>();
-          for (const k of clip.keyframes) {
-            const arr = byPath.get(k.path) ?? [];
-            arr.push(k.frame);
-            byPath.set(k.path, arr);
-          }
-          for (const frames of byPath.values()) {
-            for (let i = 1; i < frames.length; i++) {
-              expect(frames[i]).toBeGreaterThanOrEqual(frames[i - 1]);
-            }
-          }
-        }
-      }
-    }
+    // 默认路径总时长 360 帧
+    const path = linearizeDefaultPath(doc.script);
+    const spans = buildLineSequence(doc.script, path);
+    expect(spans.reduce((acc, s) => acc + s.durationFrames, 0)).toBe(360);
+    // 选择分支存在
+    expect(doc.script.nodes.some((n) => n.type === "selection" && n.options && n.options.length >= 2)).toBe(true);
   });
 });
 
@@ -72,9 +61,19 @@ describe("结构校验", () => {
     expect(validateProject(defaultProject("x"))).toEqual([]);
   });
 
+  function sceneWithTrack(doc: ReturnType<typeof defaultProject>) {
+    doc.scenes.push({
+      id: "scn_t",
+      name: "T",
+      durationFrames: 300,
+      tracks: [{ id: "trk_t", kind: "background", name: "背景", muted: false, clips: [] }],
+    });
+    return doc.scenes[0].tracks[0];
+  }
+
   it("轨道-片段类型不匹配报错", () => {
     const doc = defaultProject("x");
-    const track = doc.scenes[0].tracks[0];
+    const track = sceneWithTrack(doc);
     // 在 background 轨道放入字幕片段
     track.clips.push({
       id: "clp_bad",
@@ -98,7 +97,7 @@ describe("结构校验", () => {
 
   it("引用不存在的素材报错", () => {
     const doc = defaultProject("x");
-    const track = doc.scenes[0].tracks[0];
+    const track = sceneWithTrack(doc);
     track.clips.push({
       id: "clp_bad2",
       type: "image",

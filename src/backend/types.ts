@@ -32,7 +32,8 @@ export interface RenderSpec {
   /** 渲染快照（独立于编辑中的文档）。 */
   project: StudioProject;
   projectDir: string;
-  sceneId: string;
+  /** 剧本演出路径（节点 id 序列）；空 = 默认路径。 */
+  path: string[];
   width: number;
   height: number;
   fps: number;

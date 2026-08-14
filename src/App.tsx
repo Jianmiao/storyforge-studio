@@ -2,11 +2,13 @@ import { useEffect } from "react";
 import { TopBar } from "./components/TopBar";
 import { AssetLibrary } from "./components/AssetLibrary";
 import { SceneList } from "./components/SceneList";
+import { NodeGraphView } from "./components/NodeGraphView";
 import { CanvasView } from "./components/CanvasView";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { Timeline } from "./components/Timeline";
 import { ExportDialog } from "./components/ExportDialog";
 import { StatusBar } from "./components/StatusBar";
+import { PlaybackChoiceOverlay } from "./components/PlaybackChoiceOverlay";
 import { Toast } from "./components/Toast";
 import { useStore } from "./state/store";
 import { getBackend } from "./backend";
@@ -48,12 +50,14 @@ export default function App() {
         <AssetLibrary />
       </div>
       <div className="center-area">
+        <NodeGraphView />
         <CanvasView />
         <PropertiesPanel />
       </div>
       <Timeline />
       <StatusBar />
       <ExportDialog />
+      <PlaybackChoiceOverlay />
       <Toast />
     </div>
   );

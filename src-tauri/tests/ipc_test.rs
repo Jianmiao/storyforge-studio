@@ -50,19 +50,19 @@ fn preview_frame_evaluates_demo_project() {
     let dir = temp_dir("preview");
     std::fs::create_dir_all(&dir).unwrap();
     let demo = demo_create(Some(dir.to_string_lossy().to_string()), handle).expect("demo_create");
-    let desc = preview_frame(demo.project, "scn_demo".into(), 90).expect("preview_frame");
+    // 空路径 = 默认路径（entry → open → dialog → choice(选项1) → branchA → exit）
+    let desc = preview_frame(demo.project.clone(), vec![], 90).expect("preview_frame");
     assert_eq!(desc.frame, 90);
     assert_eq!(desc.width, 1920);
     assert_eq!(desc.height, 1080);
-    // 第 90 帧：背景 + 角色 + 字幕 1 + BGM + 暗角
+    assert_eq!(desc.duration_frames, 360);
+    // 第 90 帧（开场行）：背景 + 角色 + BGM + 转场淡入
     assert!(!desc.layers.is_empty());
-    assert!(!desc.subtitles.is_empty());
-    assert_eq!(desc.subtitles[0].text, "第一段台词：欢迎来到 StoryForge。");
     assert!(!desc.audio.is_empty());
-    assert!(desc
-        .effects
-        .iter()
-        .any(|e| e.effect_type == studio_core::model::EffectType::Vignette));
+    // 第 180 帧（第一段对话）：字幕带说话人
+    let desc2 = preview_frame(demo.project, vec![], 180).expect("preview_frame");
+    assert!(!desc2.subtitles.is_empty());
+    assert!(desc2.subtitles[0].text.contains("领航员"));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -118,7 +118,7 @@ fn render_queue_rejects_when_ffmpeg_missing() {
     let spec = studio_core::render::RenderSpec {
         project: demo.project,
         project_dir: dir.to_string_lossy().to_string(),
-        scene_id: Some("scn_demo".into()),
+        path: vec![],
         width: 320,
         height: 180,
         fps: 10,

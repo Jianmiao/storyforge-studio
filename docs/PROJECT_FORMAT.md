@@ -1,212 +1,158 @@
 # StudioProject 项目格式规范
 
-版本：v1 · 本文档是 **TS 类型（`src/domain/types.ts`）与 Rust serde 模型（`crates/studio-core/src/model.rs`）之间的唯一契约**。两侧任何改动必须同步并跑 roundtrip 测试。
+版本：v2（节点式剧情编辑） · 本文档是 **TS 类型（`src/domain/types.ts`）与 Rust serde 模型（`crates/studio-core/src/model.rs`）之间的唯一契约**。两侧任何改动必须同步并跑 roundtrip 测试。
 
 ## 1. 文件与目录约定
 
 ```
 <projectDir>/
-├── project.json          # 项目文档（本规范描述的 JSON）
-├── project.json.bak1..3  # 轮换备份（每次成功保存后轮换，最多 3 份）
-├── assets/               # 素材目录：文件名 = <sha256 前 16 位>.<ext>
-└── (运行时) project.json.tmp-<pid>  # 原子写中间文件；进程崩溃后残留会被清理
+├── project.storyforge     # 项目文档（本规范描述的 JSON）
+├── project.storyforge.bak1..3  # 轮换备份（每次成功保存后轮换，最多 3 份）
+└── assets/                # 素材目录：文件名 = <sha256 前 16 位>.<ext>
 ```
 
-- 扩展名：`.storyforge`（内容为 UTF-8 JSON，无 BOM）。
-- 素材引用一律为 `assets/<fileName>`（相对项目目录）；`originalPath` 仅作来源参考，缺失时用于提示。
-- **禁止**在应用代码中用字符串拼接构造路径：TS 侧用 `src/domain/paths.ts`，Rust 侧用 `PathBuf`。
+- 内容为 UTF-8 JSON（无 BOM）；扩展名 `.storyforge`。
+- 素材引用一律为 `assets/<fileName>`；`originalPath` 仅作来源参考。
+- **禁止**用字符串拼接构造路径：TS 侧 `src/domain/paths.ts`，Rust 侧 `PathBuf`。
 
-## 2. 顶层结构
+## 2. 顶层结构（v2）
 
 ```jsonc
 {
-  "formatVersion": 1,
-  "meta": { "name": "未命名项目", "createdAt": "2026-08-14T12:00:00Z", "updatedAt": "..." },
+  "formatVersion": 2,
+  "meta": { "name": "未命名项目", "createdAt": "...", "updatedAt": "..." },
   "canvas": { "width": 1920, "height": 1080, "fps": 30 },
   "assets": [ /* AssetRecord[] */ ],
-  "scenes": [ /* Scene[] */ ],
+  "script": { /* ScriptGraph：剧本节点图（权威剧本） */ },
+  "scenes": [ /* v1 遗留时间轴；v2 新项目为空数组 */ ],
   "export": { /* ExportConfig */ }
 }
 ```
 
-## 3. 类型定义
+## 3. 剧本节点图（v2 核心）
 
-### 3.1 AssetRecord
+### 3.1 ScriptGraph
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `id` | string | 如 `ast_1a2b3c` |
-| `kind` | `"image" \| "audio"` | |
-| `fileName` | string | `assets/<hash>.<ext>` 中的文件名部分 |
-| `originalPath` | string | 导入时原始路径（仅参考） |
-| `hash` | string | 内容 SHA-256 hex |
-| `width` / `height` | number? | 图像素材 |
-| `durationMs` | number? | 音频素材 |
-| `missing` | boolean | 打开时由后端校验；不持久化参与编辑 |
+| `nodes` | GraphNode[] | 节点集合 |
+| `entryNodeId` | string? | 演出起点（entry 节点 id） |
 
-### 3.2 Track / Clip
+### 3.2 GraphNode（单结构，可选字段按 type 生效）
 
-轨道种类：`background | character | camera | subtitle | bgm | voice | sfx | effect`。
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string | 如 `nd_1a2b3c` |
+| `type` | `entry \| script \| selection \| exit` | 节点类型 |
+| `x` / `y` | number | 节点图画布坐标 |
+| `title` | string | 节点标题 |
+| `header` | string? | entry：副标题 |
+| `endText` | string? | exit：结局文本 |
+| `lines` | ScriptLine[]? | script：有序演出行 |
+| `options` | string[]? | selection：选项文本（与 `next` 索引对齐） |
+| `next` | string[] | 输出连接（目标节点 id）：entry/script 0..1；selection 0..N；exit 0 |
 
-```jsonc
-{
-  "id": "trk_1",
-  "kind": "character",
-  "name": "角色",
-  "muted": false,
-  "clips": [ /* Clip[] */ ]
-}
-```
+### 3.3 ScriptLine（演出行：一条完整演出指令）
 
-#### 视觉片段（background / character 轨道；effect 轨道使用 effect 片段）
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string | 如 `ln_xxxx` |
+| `text` | string | 台词 / 演出文本（空 = 无字幕） |
+| `speaker` | string | 说话人显示名 |
+| `characters` | CharacterLineRef[] | 该行在场角色 |
+| `bgAssetId` | string? | 背景素材；null = 保持上一行 |
+| `bgEffect` | `none \| blur` | 背景特效 |
+| `bgmAssetId` | string? | BGM 素材；null = 保持 |
+| `voiceAssetId` | string? | 语音素材；null = 无 |
+| `soundAssetId` | string? | 音效素材；null = 无 |
+| `transition` | `none \| fade` | 行首转场（fade = 黑场淡入 15 帧） |
+| `durationFrames` | number | 该行持续帧数（播放/导出按帧求值） |
+| `placeText` | string | 地点文本（字幕副标题） |
 
-```jsonc
-{
-  "id": "clp_1",
-  "type": "image",
-  "name": "立绘",
-  "assetId": "ast_2",
-  "start": 60, "duration": 300,          // 帧区间 [start, start+duration)
-  "props": {
-    "x": 960, "y": 540,                  // 中心点，画布坐标系（原点左上）
-    "scaleX": 1.0, "scaleY": 1.0,
-    "rotation": 0,                        // 度
-    "opacity": 1.0,                       // 0..1
-    "tint": [255, 255, 255],              // RGB 颜色乘法
-    "blur": 0,                            // 模糊半径（px，预览近似）
-    "crop": { "left": 0, "right": 0, "top": 0, "bottom": 0 },  // 0..1 比例
-    "flipX": false
-  },
-  "keyframes": [
-    { "frame": 0, "path": "x", "value": 300,  "easing": { "type": "easeInOut" } },
-    { "frame": 120, "path": "x", "value": 960, "easing": { "type": "cubic", "c1": [0.42,0], "c2": [0.58,1] } }
-  ],
-  "actions": {
-    "enter": { "type": "none" },          // none | fadeIn | slideInLeft | slideInRight | zoomIn
-    "idle": { "type": "none" },           // none | sway | shake | jump | pulse | flashWhite
-    "exit": { "type": "none" }            // none | fadeOut | slideOutLeft | slideOutRight | zoomOut
-  }
-}
-```
+### 3.4 CharacterLineRef
 
-- 关键帧路径：`x y scaleX scaleY rotation opacity tint.r tint.g tint.b blur crop.left crop.right crop.top crop.bottom flipX assetId`（`assetId` 为离散关键帧：无插值，用于表情切换）。
-- 未出现在关键帧中的属性用 `props` 静态值；属性在 `[start, start+duration)` 之外不参与求值。
-- `assetId` 离散关键帧：帧号到达即切换贴图，保持到下一个 `assetId` 关键帧。
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `assetId` | string | 角色图片素材 |
+| `slot` | 0 \| 1 \| 2 | 槽位：左 / 中 / 右 |
+| `action` | `none \| sway \| shake \| jump \| pulse \| flashWhite` | 待机动作 |
+| `scale` | number | 缩放（1 = 原尺寸） |
 
-#### 字幕片段
+## 4. 求值语义（Rust `graph` + `timeline`，预览/导出共享）
 
-```jsonc
-{
-  "id": "clp_3", "type": "subtitle",
-  "start": 60, "duration": 120,
-  "text": "你好，世界。",
-  "x": 960, "y": 940, "fontSize": 64, "color": "#ffffff",
-  "align": "center",                     // left | center | right
-  "outlineWidth": 4, "opacity": 1.0,
-  "keyframes": [ /* 同视觉片段，路径限于 x y opacity fontSize */ ]
-}
-```
-
-#### 音频片段（bgm / voice / sfx）
-
-```jsonc
-{
-  "id": "clp_4", "type": "audio",
-  "assetId": "ast_9",
-  "start": 0, "duration": 360,
-  "volume": 0.8, "fadeInFrames": 15, "fadeOutFrames": 30,
-  "keyframes": [ /* 路径限于 volume */ ]
-}
-```
-
-- 采样时间轴：片段内局部时间 `t = (frame - start) / fps`；音频素材按自身采样率解码后重采样至 48k stereo 混音。
-
-#### 特效片段（effect 轨道）
-
-```jsonc
-{
-  "id": "clp_5", "type": "effect",
-  "start": 0, "duration": 360,
-  "effect": { "type": "vignette", "params": { "strength": 0.55, "softness": 0.6 } },
-  "keyframes": [ /* 路径如 strength softness alpha amount dx dy */ ]
-}
-```
-
-支持特效：`vignette`（strength, softness）、`flash`（alpha）、`shake`（amplitude, frequency，帧号做种的确定性伪随机偏移）、`tint`（color[3], amount）、`blur`（radius）、`transition`（color, alpha —— 全屏遮罩，用于淡入淡出转场）。
-
-#### 镜头（camera）片段
-
-```jsonc
-{
-  "id": "clp_6", "type": "camera",
-  "start": 0, "duration": 360,
-  "props": { "x": 0, "y": 0, "zoom": 1.0 },
-  "keyframes": [ /* 路径限于 x y zoom */ ]
-}
-```
-
-相机变换在图层变换之后应用（先对象变换，再整体平移缩放）。默认相机 `(0,0,1)` 无变换。
-
-## 4. 求值语义（Rust `timeline`，与预览/导出共享）
-
-1. 帧 `N`（0-based）∈ `[0, durationFrames)`；`t = N / fps`。
-2. 轨道顺序（合成顺序，后画在上）：`background → character → effect → subtitle → camera（仅变换）`。
-3. 片段在 `N ∈ [start, start+duration)` 内活动；字幕/特效/音频同理。
-4. 属性求值：属性有 ≥2 个关键帧覆盖该帧 → 相邻关键帧插值（`u = (N-k0)/(k1-k0)`，缓动取**后一个**关键帧的 easing；easing 函数把 `u` 映射到 `e`，`value = lerp(v0,v1,e)`）；仅 1 个关键帧 → 常量；无关键帧 → `props` 静态值。
-5. 动作：`enter` 在片段前 15 帧内生效（fadeIn: opacity 0→1；slideInLeft: x 从 -width/2 外进入；zoomIn: scale 0.6→1）；`exit` 在最后 15 帧内生效（对称）；`idle` 全程生效（sway: `x += sin(2π·lf/period)·amp`，period=60, amp=5；shake: 帧号伪随机 ±3px；jump: `y -= sin(π·u)·40`，u=lf/30 内一个周期；pulse: scale *= 1+0.08·sin(2π·lf/30)；flashWhite: 叠加白色蒙版 alpha 随 sin 脉冲）。
-6. 特效在全场景合成后按列表顺序应用（shake 平移整体画面，其余为覆盖层）。
-7. 音频：活动音频片段 → `volume(N)`（关键帧插值 × fadeIn/fadeOut 线性包络）。
+1. **线性化（默认路径）**：`linearize_default_path`：从 entry 起，沿 `next[0]` 顺序前进；selection 取第一个选项；断链即止（不补全其他分支）。
+2. **行序列**：路径上所有 script 节点的 lines 依次展开，累计全局帧区间（`startFrame`, `durationFrames`）。
+3. **按帧求值** `evaluate(project, path, frame)`：
+   - 定位 `frame` 所在行；行内局部帧 `lf`。
+   - **背景 / BGM 状态继承**：取当前行及之前最近的 `bgAssetId` / `bgmAssetId`（未指定即保持）。
+   - 背景层铺满画布；角色按槽位摆放（左/中/右），动作摆动（sway 正弦 / shake 抖动 / jump 抛物线 / pulse 缩放脉冲 / flashWhite 白闪）。
+   - 字幕：`speaker：text`（placeText 非空时作为副标题行）。
+   - 转场：行首 `fade` → 前 15 帧黑场淡入（transition effect）。
+   - 背景特效 `blur` → 全屏模糊 effect。
+   - 音频：BGM 从设置行持续到结尾（淡入 30 帧 / 淡出 60 帧）；语音/音效在行区间内播放。
+   - 输出：`SceneDescriptor`（与时间轴求值同构；预览 PixiJS 与离线合成共用）。
+4. **分支**：播放器遇到 selection（某 script 节点播完且 next 指向 selection）时暂停并弹出选项；选择后重建路径（前缀 + selection + 目标 + 目标默认后续）。离线导出使用调用方传入的 `path`（空 = 默认路径）。
+5. **时间轴回退**：无剧本图（v1 迁移项目）时，`evaluate` 回退 `timeline::evaluate`（scenes 结构，见 §6）。
 
 ## 5. 版本与迁移
 
-- `formatVersion` 从 `1` 起。升级时：新增 `migrations[from] → to` 的纯函数（输入旧文档 JSON，输出新文档 JSON，**不得改动格式版本之外的其他字段**），并保留 `migrate.rs` / `migrate.ts` 两侧同名实现 + 各自测试。
-- 加载流程：读 JSON → 若 `formatVersion` < 当前，按链逐级迁移 → 校验 → 进入编辑器。
-- 打开**未知更高版本**：拒绝打开并提示「文件由更新版本创建」。
-- 写入流程：始终写当前 `FORMAT_VERSION`。
+- `formatVersion` 当前为 `2`。迁移链：`0 → 1 → 2`。
+  - `v0 → v1`：补 formatVersion；素材 fileName 去 `assets/` 前缀；image clip 扁平字段 → props。
+  - `v1 → v2`：补 `script` 空剧本图（`{ nodes: [], entryNodeId: null }`）；`scenes` 保留为兼容数据（求值回退）。
+- 加载流程：读 JSON → 按链迁移 → 校验（`validateProject`）→ 进入编辑器。
+- 打开未知更高版本：拒绝并提示。
+- 写入始终为当前 `FORMAT_VERSION`。
 
-## 6. 持久化语义（原子写 / 备份 / 恢复）
+## 6. v1 时间轴兼容结构（scenes，仅回退求值）
 
-1. 写 `<path>.tmp-<pid>` → `flush` → `rename` 到 `<path>`（同卷原子替换）。
-2. 保存成功后轮换备份：`<path>` → `.bak1`（旧 `.bak1`→`.bak2`→`.bak3`，丢弃最旧）。
-3. 打开时：主文件解析失败 → 依次尝试 `.bak1..3`，返回 `{ project, recoveredFrom: "bak1" }`；残留 `.tmp-*` 自动清理（视为上次写入中断，主文件才是权威）。
-4. 自动保存：前端在命令提交后 debounce 1.5s 触发；应用启动时若存在上次会话的恢复标记（`.recovery` 目录方案，本阶段未启用，见已知限制），提示恢复。
+与 v1 规范一致：`scenes[].tracks[].clips[]`（背景/角色/镜头/字幕/BGM/语音/音效/特效 8 类轨道；片段 start/duration/keyframes/easing/actions）。v2 新项目不产生；迁移项目保留原样。
 
-## 7. 示例（演示项目节选）
+## 7. 持久化语义（原子写 / 备份 / 恢复）
+
+1. 写 `<path>.tmp-<pid>` → `flush` → `rename`（同卷原子替换）。
+2. 保存后轮换备份：`.bak1` → `.bak2` → `.bak3`（丢弃最旧）。
+3. 打开时主文件解析失败 → 依次尝试 `.bak1..3`，返回 `{ project, recoveredFrom }`；残留 `.tmp-*` 自动清理。
+4. 自动保存：前端命令提交后 debounce 1.5s 触发。
+
+## 8. 示例（演示项目节选：节点式剧本）
 
 ```jsonc
 {
-  "formatVersion": 1,
-  "meta": { "name": "演示项目", "createdAt": "2026-08-14T00:00:00Z", "updatedAt": "2026-08-14T00:00:00Z" },
+  "formatVersion": 2,
+  "meta": { "name": "演示项目", "createdAt": "...", "updatedAt": "..." },
   "canvas": { "width": 1920, "height": 1080, "fps": 30 },
-  "assets": [
-    { "id": "ast_bg", "kind": "image", "fileName": "a1b2c3d4e5f6a7b8.png", "originalPath": "", "hash": "a1b2...", "width": 1920, "height": 1080 },
-    { "id": "ast_char", "kind": "image", "fileName": "9f8e7d6c5b4a3210.png", "originalPath": "", "hash": "9f8e...", "width": 720, "height": 1080 },
-    { "id": "ast_bgm", "kind": "audio", "fileName": "0f0f0f0f0f0f0f0f.wav", "originalPath": "", "hash": "0f0f...", "durationMs": 12000 }
-  ],
-  "scenes": [{
-    "id": "scn_demo", "name": "演示场景", "durationFrames": 360,
-    "tracks": [
-      { "id": "trk_bg", "kind": "background", "name": "背景", "muted": false, "clips": [
-        { "id": "clp_bg", "type": "image", "assetId": "ast_bg", "start": 0, "duration": 360, "props": { "x": 960, "y": 540, "scaleX": 1, "scaleY": 1, "rotation": 0, "opacity": 1, "tint": [255,255,255], "blur": 0, "crop": { "left": 0, "right": 0, "top": 0, "bottom": 0 }, "flipX": false }, "keyframes": [], "actions": { "enter": { "type": "fadeIn" }, "idle": { "type": "none" }, "exit": { "type": "none" } } }
-      ] },
-      { "id": "trk_cam", "kind": "camera", "name": "镜头", "muted": false, "clips": [
-        { "id": "clp_cam", "type": "camera", "start": 0, "duration": 360, "props": { "x": 0, "y": 0, "zoom": 1 }, "keyframes": [ { "frame": 0, "path": "x", "value": 0, "easing": { "type": "linear" } }, { "frame": 360, "path": "x", "value": 80, "easing": { "type": "linear" } } ] }
-      ] },
-      { "id": "trk_sub", "kind": "subtitle", "name": "字幕", "muted": false, "clips": [
-        { "id": "clp_sub1", "type": "subtitle", "start": 60, "duration": 120, "text": "第一段台词", "x": 960, "y": 940, "fontSize": 64, "color": "#ffffff", "align": "center", "outlineWidth": 4, "opacity": 1, "keyframes": [] },
-        { "id": "clp_sub2", "type": "subtitle", "start": 180, "duration": 120, "text": "第二段台词", "x": 960, "y": 940, "fontSize": 64, "color": "#ffffff", "align": "center", "outlineWidth": 4, "opacity": 1, "keyframes": [] }
-      ] },
-      { "id": "trk_bgm", "kind": "bgm", "name": "BGM", "muted": false, "clips": [
-        { "id": "clp_bgm", "type": "audio", "assetId": "ast_bgm", "start": 0, "duration": 360, "volume": 0.7, "fadeInFrames": 30, "fadeOutFrames": 60, "keyframes": [] }
-      ] }
+  "assets": [ /* ast_bg / ast_char / ast_bgm / ast_sfx */ ],
+  "script": {
+    "entryNodeId": "nd_entry",
+    "nodes": [
+      { "id": "nd_entry", "type": "entry", "x": 60, "y": 260, "title": "开场", "header": "演示剧本", "next": ["nd_open"] },
+      {
+        "id": "nd_open", "type": "script", "x": 300, "y": 260, "title": "开场演出", "next": ["nd_dialog"],
+        "lines": [
+          {
+            "id": "ln_open", "text": "夜色降临，故事开始。", "speaker": "",
+            "characters": [ { "assetId": "ast_char", "slot": 1, "action": "sway", "scale": 1 } ],
+            "bgAssetId": "ast_bg", "bgEffect": "none", "bgmAssetId": "ast_bgm",
+            "voiceAssetId": null, "soundAssetId": null,
+            "transition": "fade", "durationFrames": 120, "placeText": "小镇广场"
+          }
+        ]
+      },
+      {
+        "id": "nd_choice", "type": "selection", "x": 780, "y": 260, "title": "选择",
+        "options": ["进入支线剧情", "直接结束"], "next": ["nd_branchA", "nd_branchB"]
+      },
+      { "id": "nd_exit", "type": "exit", "x": 1260, "y": 260, "title": "结束", "endText": "全剧终", "next": [] }
     ]
-  }],
+  },
+  "scenes": [],
   "export": { "width": 1920, "height": 1080, "fps": 30, "videoCodec": "h264", "crf": 18, "preset": "veryfast", "audioBitrateKbps": 192 }
 }
 ```
 
-## 8. 扩展性预留
+## 9. 扩展性预留
 
-- 素材 `kind` 可扩展 `video`（解码帧序列）；`Clip.type` 可扩展 `video` / `skeleton`。
-- `RendererAdapter` 注册表为 Skeleton/Spine/Live2D/3D 预留（见 ARCHITECTURE.md §2.4）；格式中不预埋任何未授权渲染器的私有数据。
-- 用户自定义导入器接口（未来）：`ImportAdapter { canHandle(path): boolean; import(path): AssetRecord[] }` 注册表；本阶段不实现任何私有格式的自动提取。
+- 素材 `kind` 可扩展 `video`；演出行可扩展 `camera`（镜头指令）与 `effect`（特效指令）。
+- 节点类型可扩展（如 `condition` 条件节点）—— 需同步 Rust/TS 两侧 + 迁移。
+- 用户自定义导入器接口（未来）：`ImportAdapter { canHandle(path); import(path) }` 注册表；不实现任何私有格式的自动提取。
+- 骨架渲染（Spine/Skeleton）作为 `RendererAdapter` 替换实现接入，需明确授权；未授权不伪装支持。

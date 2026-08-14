@@ -156,6 +156,7 @@ mod tests {
             },
             canvas: CanvasConfig { width: 1920, height: 1080, fps: 30 },
             assets: vec![],
+            script: crate::model::ScriptGraph { nodes: vec![], entry_node_id: None },
             scenes: vec![],
             export: crate::model::ExportConfig {
                 width: 1920,

@@ -4,6 +4,7 @@ import type { Command, ProjectDraft } from "../domain/commands";
 import { History } from "../domain/history";
 import { defaultProject, type StudioProject } from "../domain/types";
 import { validateProject } from "../domain/schema";
+import { linearizeDefaultPath, nodeOf } from "../domain/graph";
 import { getBackend } from "../backend";
 import type { FfmpegInfo, RenderJobInfo } from "../backend/types";
 import { ProjectPaths } from "../domain/paths";
@@ -35,9 +36,15 @@ interface EditorState {
   activeSceneId: string | null;
   playhead: number;
   playing: boolean;
+  /** 当前剧本演出路径（节点 id 序列；null = 默认路径）。 */
+  playbackPath: string[] | null;
+  /** 播放中遇到选择节点时的挂起选项。 */
+  pendingChoice: { selectionNodeId: string; prompt: string; options: string[] } | null;
   selectedClipId: string | null;
   selectedTrackId: string | null;
   selectedAssetId: string | null;
+  selectedNodeId: string | null;
+  selectedLineId: string | null;
   timelineZoom: number;
   ffmpeg: FfmpegInfo | null;
   renderJobs: RenderJobInfo[];
@@ -66,6 +73,12 @@ interface EditorState {
   selectClip(id: string | null): void;
   selectTrack(id: string | null): void;
   selectAsset(id: string | null): void;
+  selectNode(id: string | null): void;
+  selectLine(id: string | null): void;
+  setPlaybackPath(path: string[] | null): void;
+  setPendingChoice(choice: { selectionNodeId: string; prompt: string; options: string[] } | null): void;
+  /** 播放中在 selection 节点选择第 idx 个选项：重建路径并继续播放。 */
+  choosePlaybackOption(idx: number): void;
   setTimelineZoom(z: number): void;
   setExportDialogOpen(v: boolean): void;
   showToast(text: string, kind?: ToastState["kind"]): void;
@@ -103,9 +116,13 @@ export const useStore = create<EditorState>((set, get) => ({
   activeSceneId: null,
   playhead: 0,
   playing: false,
+  playbackPath: null,
+  pendingChoice: null,
   selectedClipId: null,
   selectedTrackId: null,
   selectedAssetId: null,
+  selectedNodeId: null,
+  selectedLineId: null,
   timelineZoom: 4,
   ffmpeg: null,
   renderJobs: [],
@@ -177,9 +194,13 @@ export const useStore = create<EditorState>((set, get) => ({
       activeSceneId: doc.scenes[0]?.id ?? null,
       playhead: 0,
       playing: false,
+      playbackPath: null,
+      pendingChoice: null,
       selectedClipId: null,
       selectedTrackId: null,
       selectedAssetId: null,
+      selectedNodeId: null,
+      selectedLineId: null,
       toast: { kind: "info", text: "已新建项目" },
     });
   },
@@ -236,9 +257,13 @@ export const useStore = create<EditorState>((set, get) => ({
         activeSceneId: result.project.scenes[0]?.id ?? null,
         playhead: 0,
         playing: false,
+        playbackPath: null,
+        pendingChoice: null,
         selectedClipId: null,
         selectedTrackId: null,
         selectedAssetId: null,
+        selectedNodeId: null,
+        selectedLineId: null,
         toast: {
           kind: result.recoveredFrom ? "error" : "success",
           text: result.recoveredFrom
@@ -272,7 +297,11 @@ export const useStore = create<EditorState>((set, get) => ({
         activeSceneId: result.project.scenes[0]?.id ?? null,
         playhead: 0,
         playing: false,
+        playbackPath: null,
+        pendingChoice: null,
         selectedClipId: null,
+        selectedNodeId: null,
+        selectedLineId: null,
         toast: { kind: "success", text: "演示项目已创建" },
       });
     } catch (e) {
@@ -347,7 +376,7 @@ export const useStore = create<EditorState>((set, get) => ({
   },
 
   selectClip(id) {
-    set({ selectedClipId: id, selectedTrackId: null });
+    set({ selectedClipId: id, selectedTrackId: null, selectedNodeId: null, selectedLineId: null });
   },
 
   selectTrack(id) {
@@ -356,6 +385,51 @@ export const useStore = create<EditorState>((set, get) => ({
 
   selectAsset(id) {
     set({ selectedAssetId: id });
+  },
+
+  selectNode(id) {
+    set({ selectedNodeId: id, selectedLineId: null, selectedClipId: null });
+  },
+
+  selectLine(id) {
+    set({ selectedLineId: id });
+  },
+
+  setPlaybackPath(path) {
+    set({ playbackPath: path });
+  },
+
+  setPendingChoice(choice) {
+    set({ pendingChoice: choice });
+  },
+
+  choosePlaybackOption(idx) {
+    const state = get();
+    const doc = state.document;
+    const choice = state.pendingChoice;
+    if (!doc || !choice) return;
+    const sel = nodeOf(doc.script, choice.selectionNodeId);
+    const target = sel?.next[idx];
+    const curPath =
+      state.playbackPath && state.playbackPath.length > 0
+        ? [...state.playbackPath]
+        : linearizeDefaultPath(doc.script);
+    const selIdx = curPath.indexOf(choice.selectionNodeId);
+    const prefix = selIdx >= 0 ? curPath.slice(0, selIdx) : curPath.slice(0, -1);
+    const rest: string[] = [choice.selectionNodeId];
+    const visited = new Set([...prefix, choice.selectionNodeId]);
+    let cur = target;
+    while (cur && !visited.has(cur)) {
+      visited.add(cur);
+      rest.push(cur);
+      const node = nodeOf(doc.script, cur);
+      if (!node) break;
+      const nxt = node.next[0];
+      if (!nxt) break;
+      cur = nxt;
+    }
+    set({ playbackPath: [...prefix, ...rest], pendingChoice: null, playhead: 0 });
+    get().setPlaying(true);
   },
 
   setTimelineZoom(z) {

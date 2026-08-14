@@ -56,8 +56,8 @@ export class TauriAdapter implements BackendAdapter {
     return convertFileSrc(path);
   }
 
-  async previewFrame(project: StudioProject, sceneId: string, frame: number): Promise<SceneDescriptor> {
-    return invoke<SceneDescriptor>("preview_frame", { project, sceneId, frame });
+  async previewFrame(project: StudioProject, path: string[], frame: number): Promise<SceneDescriptor> {
+    return invoke<SceneDescriptor>("preview_frame", { project, path, frame });
   }
 
   async startRender(spec: RenderSpec): Promise<string> {

@@ -752,7 +752,357 @@ select {
   border-color: var(--ok);
 }
 
+/* ---------------- 节点图编辑器（v2 主视图） ---------------- */
+
+.node-graph-view {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  background:
+    radial-gradient(circle at 20% 20%, var(--bg-2) 0%, var(--bg-0) 100%);
+  z-index: 2;
+}
+
+.graph-node {
+  position: absolute;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: grab;
+  user-select: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  z-index: 3;
+}
+
+.graph-node:hover {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.graph-node.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.graph-node.active {
+  box-shadow: 0 0 0 2px var(--accent), 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.graph-node.connectable {
+  outline: 2px dashed var(--accent);
+  outline-offset: 3px;
+}
+
+.graph-node-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.graph-node-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-node-meta {
+  font-size: 10.5px;
+  color: var(--text-2);
+  margin-top: 2px;
+}
+
+.graph-node-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.graph-node-line {
+  font-size: 11px;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1px 5px;
+}
+
+.graph-port {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  border: 2px solid var(--accent);
+  cursor: crosshair;
+  z-index: 4;
+}
+
+.graph-port:hover {
+  background: var(--accent);
+}
+
+.node-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  z-index: 5;
+}
+
+.node-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  font-size: 11px;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 4px 10px;
+  border-radius: 5px;
+}
+
+/* ---------------- 预览浮窗 ---------------- */
+
+.preview-dock {
+  position: absolute;
+  right: 284px;
+  bottom: 16px;
+  width: 396px;
+  height: 226px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  overflow: hidden;
+  z-index: 11;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-dock.expanded {
+  inset: 0;
+  width: auto;
+  height: auto;
+  border: none;
+  border-radius: 0;
+  z-index: 9;
+}
+
+.preview-dock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px 2px 10px;
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.preview-dock .canvas-host {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.preview-dock .canvas-overlay,
+.preview-dock .canvas-toolbar,
+.preview-dock .playback-badge {
+  position: absolute;
+}
+
+/* ---------------- 播放选择覆盖层 ---------------- */
+
+.choice-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 250;
+}
+
+.choice-panel {
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 20px 24px;
+  min-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 16px 64px rgba(0, 0, 0, 0.6);
+}
+
+.choice-prompt {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.choice-option {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 13.5px;
+}
+
+.choice-option:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ---------------- 演出序列（检查视图） ---------------- */
+
+.sequence-lane {
+  background: var(--bg-2);
+  overflow: hidden;
+}
+
+.seq-block {
+  position: absolute;
+  top: 14px;
+  bottom: 20px;
+  border-radius: 5px;
+  background: #2b5aa0;
+  border: 1px solid #4a7fd4;
+  color: #dbe7ff;
+  font-size: 11px;
+  padding: 3px 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.seq-block:hover {
+  filter: brightness(1.15);
+}
+
+.seq-block.entry {
+  background: #2f8f46;
+  border-color: #5fbf79;
+}
+
+.seq-block.selection {
+  background: #b06a1f;
+  border-color: #e0a050;
+}
+
+.seq-block.exit {
+  background: #b03838;
+  border-color: #e07070;
+}
+
+.seq-block-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seq-block-meta {
+  font-size: 9px;
+  opacity: 0.75;
+  font-family: var(--font-mono);
+}
+
+.seq-selection {
+  position: absolute;
+  top: 0;
+  height: 12px;
+  font-size: 9.5px;
+  color: #f0c98f;
+  background: rgba(176, 106, 31, 0.35);
+  padding: 0 5px;
+  border-radius: 3px;
+  transform: translateX(-50%);
+}
+
+/* ---------------- 节点属性编辑 ---------------- */
+
+.node-line-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 12px 8px;
+}
+
+.node-line-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-0);
+  font-size: 11.5px;
+  color: var(--text-1);
+  cursor: pointer;
+}
+
+.node-line-item:hover {
+  border-color: var(--border-strong);
+}
+
+.node-line-item.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.node-line-item .line-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.char-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 12px;
+}
+
+.char-row select,
+.char-row input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ---------------- 滚动条 ---------------- */
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4a5368;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
 ::-webkit-scrollbar {
   width: 9px;

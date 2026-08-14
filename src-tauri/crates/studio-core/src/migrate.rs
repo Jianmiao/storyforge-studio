@@ -3,6 +3,19 @@
 
 use serde_json::{json, Value};
 
+/// v1（时间轴）→ v2（节点式剧本）：补 formatVersion 2 + script 空剧本图；
+/// scenes 保留为兼容数据（求值器对无剧本图项目回退时间轴求值）。
+fn migrate_v1_to_v2(mut doc: Value) -> Result<Value, String> {
+    doc["formatVersion"] = json!(2);
+    if doc.get("script").and_then(|v| v.as_object()).is_none() {
+        doc["script"] = json!({ "nodes": [], "entryNodeId": null });
+    }
+    if doc.get("scenes").and_then(|v| v.as_array()).is_none() {
+        doc["scenes"] = json!([]);
+    }
+    Ok(doc)
+}
+
 pub fn migrate_project(raw: &Value) -> Result<Value, String> {
     // v0 历史夹具无 formatVersion 字段：按 v0 处理
     let version = raw
@@ -20,6 +33,10 @@ pub fn migrate_project(raw: &Value) -> Result<Value, String> {
             0 => {
                 doc = migrate_v0_to_v1(doc)?;
                 v = 1;
+            }
+            1 => {
+                doc = migrate_v1_to_v2(doc)?;
+                v = 2;
             }
             _ => return Err(format!("缺少从 v{v} 的迁移")),
         }
@@ -131,9 +148,9 @@ mod tests {
     }
 
     #[test]
-    fn v0_migrates_to_v1() {
+    fn v0_migrates_to_latest_v2() {
         let doc = migrate_project(&v0_fixture()).unwrap();
-        assert_eq!(doc["formatVersion"], 1);
+        assert_eq!(doc["formatVersion"], 2);
         assert_eq!(doc["assets"][0]["fileName"], "old.png");
         let clip = &doc["scenes"][0]["tracks"][0]["clips"][0];
         assert_eq!(clip["props"]["x"], 100.0);
@@ -141,6 +158,24 @@ mod tests {
         assert_eq!(clip["props"]["opacity"], 0.5);
         assert!(clip.get("transform").is_none());
         assert_eq!(clip["actions"]["enter"], "none");
+        // v2 新增 script 剧本图
+        assert_eq!(doc["script"]["nodes"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn v1_migrates_to_v2_keeping_scenes() {
+        let doc = json!({
+            "formatVersion": 1,
+            "meta": { "name": "x" },
+            "canvas": { "width": 100, "height": 100, "fps": 30 },
+            "assets": [],
+            "scenes": [ { "id": "s1", "name": "S", "durationFrames": 100, "tracks": [] } ],
+            "export": { "width": 100, "height": 100, "fps": 30, "videoCodec": "h264", "crf": 18, "preset": "veryfast", "audioBitrateKbps": 192 }
+        });
+        let out = migrate_project(&doc).unwrap();
+        assert_eq!(out["formatVersion"], 2);
+        assert_eq!(out["scenes"][0]["id"], "s1");
+        assert_eq!(out["script"]["entryNodeId"], serde_json::Value::Null);
     }
 
     #[test]
@@ -151,8 +186,12 @@ mod tests {
 
     #[test]
     fn current_version_passthrough() {
-        let doc = json!({ "formatVersion": 1, "scenes": [] });
+        let doc = json!({
+            "formatVersion": 2,
+            "scenes": [],
+            "script": { "nodes": [], "entryNodeId": null }
+        });
         let out = migrate_project(&doc).unwrap();
-        assert_eq!(out["formatVersion"], 1);
+        assert_eq!(out["formatVersion"], 2);
     }
 }

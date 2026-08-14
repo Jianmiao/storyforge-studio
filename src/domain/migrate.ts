@@ -17,7 +17,6 @@ export interface Migration {
  * - 补充 formatVersion: 1
  * - assets[].fileName 由 "assets/xxx.png" 全相对路径改为纯文件名
  * - image clip 的扁平字段 { transform: {position:[x,y], scale:[sx,sy]} } 迁移为 props
- *   { x, y, scaleX, scaleY, ... }（其余取默认）
  */
 const v0ToV1: Migration = {
   from: 0,
@@ -67,7 +66,28 @@ const v0ToV1: Migration = {
   },
 };
 
-export const migrations: Migration[] = [v0ToV1];
+/**
+ * v1（时间轴）→ v2（节点式剧本）：
+ * - formatVersion: 2
+ * - 新增 script 剧本图（空图 + entryNodeId null；scenes 时间轴保留为兼容数据，
+ *   求值器对无剧本图的项目回退到时间轴求值 —— 迁移不破坏任何 v1 内容）
+ */
+const v1ToV2: Migration = {
+  from: 1,
+  to: 2,
+  migrate(raw) {
+    const doc = { ...raw, formatVersion: 2 } as Record<string, unknown>;
+    if (doc.script === undefined || doc.script === null) {
+      doc.script = { nodes: [], entryNodeId: null };
+    }
+    if (!Array.isArray(doc.scenes)) {
+      doc.scenes = [];
+    }
+    return doc;
+  },
+};
+
+export const migrations: Migration[] = [v0ToV1, v1ToV2];
 
 export function latestFormatVersion(): number {
   return FORMAT_VERSION;

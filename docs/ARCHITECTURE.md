@@ -1,6 +1,23 @@
 # StoryForge Studio 架构
 
-版本：1.0（第一阶段 MVP） · 配套：`PROJECT_FORMAT.md`、`MVP_CHECKLIST.md`
+版本：2.0（v2 节点式剧情编辑） · 配套：`PROJECT_FORMAT.md`、`MVP_CHECKLIST.md`
+
+> 设计范式借鉴经典剧情节点图（Entry → Script → Selection → Exit），为独立实现；
+> 不复制、不移植任何第三方源码或私有格式。项目格式见 PROJECT_FORMAT.md（v2）。
+
+## 0. 编辑范式（v2 核心）
+
+**节点式剧情编辑**：剧本 = 节点图（`script.nodes`），节点类型：
+- `entry`：剧本入口（标题/副标题）
+- `script`：剧本节点 = 有序**演出行**列表（每行：台词、说话人、在场角色[槽位+动作]、背景、BGM、语音、音效、转场、时长）
+- `selection`：选择分支（选项文本列表，第 i 个选项 → 第 i 条连接）
+- `exit`：结局
+
+演出 = 沿图执行：Entry → Script（顺序播放行内演出指令）→ Selection（播放器暂停弹出选项，用户选择后沿对应连接继续；离线导出用默认路径 = 每处取第一个选项）→ … → Exit。
+
+- 节点图是**权威剧本**；时间轴降级为「演出序列检查视图」（线性化结果，只读）。
+- 求值：`graph.rs` 线性化路径 → 行序列 → 按帧求值 → 同一 `SceneDescriptor` 供预览与离线渲染。
+- v1 时间轴项目迁移后保留 `scenes`，求值自动回退时间轴（兼容模式）。
 
 ## 1. 总览
 
@@ -33,10 +50,14 @@ StoryForge Studio 是一个 **前端（React）— 状态层 — 后端适配器
    └───────────┘
 ```
 
-**核心不变式：所有预览与离线渲染使用同一套时间轴求值逻辑。** 求值器只存在于 Rust（`studio-core::timeline`）。预览与离线渲染都从「帧号 → SceneDescriptor」开始：
+**核心不变式：所有预览与离线渲染使用同一套时间轴求值逻辑。** 求值器只存在于 Rust（`studio-core`）：
+- v2 剧本图：`graph::evaluate(project, path, frame)`（线性化 + 按帧求值）；
+- v1 回退：`timeline::evaluate(project, scene, frame)`。
+
+预览与离线渲染都从「帧号 → SceneDescriptor」开始：
 
 - 离线：`evaluate(frame) → composite(frame, descriptor) → RGBA → FFmpeg stdin`（全程 Rust）。
-- 预览：IPC `preview.frame(n)` 返回同一 `SceneDescriptor`，WebView 内 PixiJS 仅负责**绘制**（不参与求值）。
+- 预览：IPC `preview.frame(project, path, frame)` 返回同一 `SceneDescriptor`，WebView 内 PixiJS 仅负责**绘制**（不参与求值）。
 
 浏览器开发模式（无 Rust）下，界面依赖 `dev/BrowserFallbackEvaluator.ts` —— 一个**仅存在于 DEV 构建**的测试替身（求值逻辑子集）。它不参与产品路径：产品构建（Tauri）中预览永远走 Rust。UI 自动化测试不对该替身的数值正确性做断言（数值正确性由 `cargo test` 与离线导出验证覆盖）。
 
@@ -114,20 +135,21 @@ crate 结构（无 Tauri 依赖，可独立测试；`src-tauri` 与 `sf_export` 
 ```
 crates/studio-core/src/
 ├── lib.rs
-├── model.rs        # serde 领域模型（与 TS 类型同构）
+├── model.rs        # serde 领域模型（v2：剧本节点图 + v1 兼容 scenes）
+├── graph.rs        # ★ 剧本图求值器：线性化（默认路径/分支）→ 行序列 → 帧 → SceneDescriptor
+├── timeline.rs     # v1 时间轴求值器（兼容回退）
 ├── project_io.rs   # save/open：原子写（tmp+fsync+rename）、备份轮换 bak1..3、损坏恢复、tmp 清理
-├── migrate.rs      # 迁移链（v0 测试夹具 → v1）
+├── migrate.rs      # 迁移链（v0 → v1 → v2）
 ├── assets.rs       # 导入（复制 + sha256 + 元数据）、缺失检测、重新定位
 ├── ffmpeg.rs       # 检测（env / PATH / 常见目录）、版本解析
-├── timeline.rs     # ★ 求值器：帧 → SceneDescriptor（关键帧插值、缓动、动作、相机、字幕、音频包络）
 ├── compositor.rs   # 软件合成：图像解码缓存、仿射采样（双线性）、合成、模糊、暗角、闪白、震动、文字（fontdue）
 ├── audio.rs        # symphonia 解码 → 48k stereo f32 缓存；混音 + 包络 → s16le PCM 文件
 ├── encoder.rs      # FFmpeg 进程：rawvideo stdin + PCM 文件双输入；进度回调；取消 kill；临时文件清理
 ├── jobs.rs         # RenderJob 状态机 + 顺序队列
-└── demo.rs         # 演示项目生成：渐变背景 PNG / 角色 PNG / 正弦 BGM / 提示音 WAV（全部本地合成）
+└── demo.rs         # 演示项目生成（v2 节点式剧本 + 全本地合成素材）
 ```
 
-**求值器（timeline.rs）契约**：输入 `(&Project, sceneId, frame)` → 输出 `SceneDescriptor`（帧号、相机、图层列表、字幕列表、特效列表、音频列表）。纯函数、无 I/O、确定性（震动等伪随机用帧号做种）。
+**求值器契约**：输入 `(&Project, path, frame)` → 输出 `SceneDescriptor`（帧号、相机、图层列表、字幕列表、特效列表、音频列表）。纯函数、无 I/O、确定性（震动等伪随机用帧号做种）。
 
 ### 2.6 Tauri 壳（`src-tauri`）
 

@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -14,9 +14,82 @@ pub struct Project {
     pub meta: Meta,
     pub canvas: CanvasConfig,
     pub assets: Vec<AssetRecord>,
+    /// 剧本节点图（v2 权威剧本）。
+    pub script: ScriptGraph,
+    /// v1 遗留时间轴（迁移保留；v2 新项目为空）。
     pub scenes: Vec<Scene>,
     #[serde(rename = "export")]
     pub export: ExportConfig,
+}
+
+// ---------------------------------------------------------------------------
+// 剧本节点图（v2）
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptGraph {
+    pub nodes: Vec<GraphNode>,
+    pub entry_node_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum GraphNodeType {
+    Entry,
+    Script,
+    Selection,
+    Exit,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphNode {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub node_type: GraphNodeType,
+    pub x: f64,
+    pub y: f64,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub header: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lines: Option<Vec<ScriptLine>>,
+    /// selection 选项文本，与 next 索引对齐。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<String>>,
+    /// 输出连接（目标节点 id）。
+    pub next: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CharacterLineRef {
+    pub asset_id: String,
+    /// 0 = 左，1 = 中，2 = 右。
+    pub slot: i64,
+    /// 待机动作：none | sway | shake | jump | pulse | flashWhite。
+    pub action: String,
+    pub scale: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptLine {
+    pub id: String,
+    pub text: String,
+    pub speaker: String,
+    pub characters: Vec<CharacterLineRef>,
+    pub bg_asset_id: Option<String>,
+    pub bg_effect: String,
+    pub bgm_asset_id: Option<String>,
+    pub voice_asset_id: Option<String>,
+    pub sound_asset_id: Option<String>,
+    pub transition: String,
+    pub duration_frames: i64,
+    pub place_text: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

@@ -1,4 +1,7 @@
-import type { Clip, ClipType, StudioProject, TrackKind } from "./types";
+import type { Clip, ClipType, Scene, StudioProject, TrackKind } from "./types";
+
+/** 剧本节点类型（v2）。 */
+const GRAPH_NODE_TYPES = ["entry", "script", "selection", "exit"];
 
 /** 允许的 轨道种类 ↔ 片段类型 组合。 */
 export const TRACK_KIND_TO_CLIP_TYPES: Record<TrackKind, ClipType[]> = {
@@ -64,7 +67,7 @@ const DISCRETE_CLIP_PATHS = new Set(["assetId", "props.flipX", "align"]);
 export function validateProject(doc: StudioProject): string[] {
   const errors: string[] = [];
 
-  if (doc.formatVersion !== 1) errors.push(`formatVersion 应为 1，实际 ${doc.formatVersion}`);
+  if (doc.formatVersion !== 2) errors.push(`formatVersion 应为 2，实际 ${doc.formatVersion}`);
   if (typeof doc.meta?.name !== "string") errors.push("meta.name 缺失");
   const c = doc.canvas;
   if (!c || !(c.width > 0) || !(c.height > 0)) errors.push("canvas 尺寸非法");
@@ -81,26 +84,82 @@ export function validateProject(doc: StudioProject): string[] {
 
   const sceneIds = new Set<string>();
   for (const scene of doc.scenes) {
-    if (sceneIds.has(scene.id)) errors.push(`场景 id 重复: ${scene.id}`);
-    sceneIds.add(scene.id);
-    if (!(scene.durationFrames > 0)) errors.push(`场景 ${scene.id} durationFrames 非法`);
-    const trackIds = new Set<string>();
-    for (const track of scene.tracks) {
-      if (!TRACK_KINDS.includes(track.kind)) errors.push(`轨道 ${track.id} kind 非法: ${track.kind}`);
-      if (trackIds.has(track.id)) errors.push(`轨道 id 重复: ${track.id}`);
-      trackIds.add(track.id);
-      const clipIds = new Set<string>();
-      for (const clip of track.clips) {
-        if (clipIds.has(clip.id)) errors.push(`片段 id 重复: ${clip.id}`);
-        clipIds.add(clip.id);
-        validateClip(clip, track.kind, assetIds, errors);
-      }
-    }
+    validateScene(scene, assetIds, sceneIds, errors);
   }
+
+  // ---- 剧本节点图校验 ----
+  validateScriptGraph(doc, assetIds, errors);
 
   const e = doc.export;
   if (!e || !(e.width > 0) || !(e.height > 0) || !(e.fps >= 1)) errors.push("export 配置非法");
   return errors;
+}
+
+function validateScriptGraph(doc: StudioProject, assetIds: Set<string>, errors: string[]): void {
+  const graph = doc.script;
+  if (!graph || !Array.isArray(graph.nodes)) {
+    errors.push("script 剧本图缺失");
+    return;
+  }
+  const ids = new Set<string>();
+  const entries: string[] = [];
+  for (const node of graph.nodes) {
+    if (ids.has(node.id)) errors.push(`剧本节点 id 重复: ${node.id}`);
+    ids.add(node.id);
+    if (!GRAPH_NODE_TYPES.includes(node.type)) errors.push(`剧本节点类型非法: ${node.type}`);
+    if (node.type === "entry") entries.push(node.id);
+    if (!Array.isArray(node.next)) errors.push(`剧本节点 ${node.id} 缺少 next`);
+    if (node.type === "selection" && node.options && node.options.length !== node.next.length) {
+      errors.push(`选择节点 ${node.id} 的选项数(${node.options.length})与连接数(${node.next.length})不一致`);
+    }
+    for (const target of node.next ?? []) {
+      if (!ids.has(target) && !graph.nodes.some((n) => n.id === target)) {
+        errors.push(`剧本节点 ${node.id} 连接到不存在的节点 ${target}`);
+      }
+    }
+    if (node.type === "script" && node.lines) {
+      for (const line of node.lines) {
+        if (!(line.durationFrames > 0)) errors.push(`演出行 ${line.id} 时长非法`);
+        if (line.bgAssetId && !assetIds.has(line.bgAssetId)) {
+          errors.push(`演出行 ${line.id} 引用不存在的背景素材 ${line.bgAssetId}`);
+        }
+        for (const ch of line.characters) {
+          if (!assetIds.has(ch.assetId)) {
+            errors.push(`演出行 ${line.id} 引用不存在的角色素材 ${ch.assetId}`);
+          }
+        }
+      }
+    }
+  }
+  if (graph.entryNodeId) {
+    if (!ids.has(graph.entryNodeId)) errors.push(`剧本入口指向不存在的节点 ${graph.entryNodeId}`);
+  } else if (entries.length > 0) {
+    errors.push("存在 entry 节点但未设置剧本入口");
+  }
+  if (entries.length > 1) errors.push(`剧本入口节点多于一个（${entries.length}）`);
+}
+
+function validateScene(
+  scene: Scene,
+  assetIds: Set<string>,
+  sceneIds: Set<string>,
+  errors: string[],
+): void {
+  if (sceneIds.has(scene.id)) errors.push(`场景 id 重复: ${scene.id}`);
+  sceneIds.add(scene.id);
+  if (!(scene.durationFrames > 0)) errors.push(`场景 ${scene.id} durationFrames 非法`);
+  const trackIds = new Set<string>();
+  for (const track of scene.tracks) {
+    if (!TRACK_KINDS.includes(track.kind)) errors.push(`轨道 ${track.id} kind 非法: ${track.kind}`);
+    if (trackIds.has(track.id)) errors.push(`轨道 id 重复: ${track.id}`);
+    trackIds.add(track.id);
+    const clipIds = new Set<string>();
+    for (const clip of track.clips) {
+      if (clipIds.has(clip.id)) errors.push(`片段 id 重复: ${clip.id}`);
+      clipIds.add(clip.id);
+      validateClip(clip, track.kind, assetIds, errors);
+    }
+  }
 }
 
 function validateClip(

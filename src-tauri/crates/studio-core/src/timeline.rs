@@ -497,6 +497,7 @@ mod tests {
             meta: Meta { name: "t".into(), created_at: "".into(), updated_at: "".into() },
             canvas: CanvasConfig { width: 1920, height: 1080, fps: 30 },
             assets: vec![],
+            script: crate::model::ScriptGraph { nodes: vec![], entry_node_id: None },
             scenes: vec![Scene {
                 id: "scn".into(),
                 name: "s".into(),

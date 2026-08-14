@@ -1,5 +1,6 @@
 import type { BackendAdapter } from "./adapter";
-import { evaluateFrame } from "../dev/stubEvaluator";
+import { evaluateFrame, evaluateGraphFrame } from "../dev/stubEvaluator";
+import { linearizeDefaultPath } from "../domain/graph";
 import type { SceneDescriptor } from "../shared/descriptor";
 import { defaultProject, type AssetRecord, type StudioProject } from "../domain/types";
 import { buildDemoProject } from "../domain/demo";
@@ -202,7 +203,13 @@ export class MockAdapter implements BackendAdapter {
 
   // ---------------------------------------------------------------- 求值（DEV 替身）
 
-  async previewFrame(project: StudioProject, sceneId: string, frame: number): Promise<SceneDescriptor> {
+  async previewFrame(project: StudioProject, path: string[], frame: number): Promise<SceneDescriptor> {
+    // 剧本图优先（v2）；无剧本图回退时间轴（v1 迁移项目）
+    if (project.script.entryNodeId && project.script.nodes.length > 0) {
+      const effectivePath = path.length > 0 ? path : linearizeDefaultPath(project.script);
+      return evaluateGraphFrame(project, effectivePath, frame);
+    }
+    const sceneId = project.scenes[0]?.id ?? "";
     return evaluateFrame(project, sceneId, frame);
   }
 

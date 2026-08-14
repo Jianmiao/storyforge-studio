@@ -94,13 +94,26 @@ pub fn assets_check(project_dir: String, project: Project) -> Result<Vec<AssetSt
 }
 
 #[tauri::command]
-pub fn preview_frame(project: Project, scene_id: String, frame: u32) -> Result<SceneDescriptor, String> {
+pub fn preview_frame(
+    project: Project,
+    path: Vec<String>,
+    frame: u32,
+) -> Result<SceneDescriptor, String> {
+    // 剧本图优先（v2）；无剧本图回退时间轴（v1 迁移项目）
+    if project.script.entry_node_id.is_some() && !project.script.nodes.is_empty() {
+        let path = if path.is_empty() {
+            studio_core::graph::linearize_default_path(&project.script)
+        } else {
+            path
+        };
+        return Ok(studio_core::graph::evaluate(&project, &path, frame));
+    }
     let scene = project
         .scenes
-        .iter()
-        .find(|s| s.id == scene_id)
-        .ok_or_else(|| format!("场景不存在: {scene_id}"))?;
-    Ok(studio_core::timeline::evaluate(&project, scene, frame))
+        .first()
+        .ok_or_else(|| "项目既无剧本图也无场景".to_string())?
+        .clone();
+    Ok(studio_core::timeline::evaluate(&project, &scene, frame))
 }
 
 #[tauri::command]

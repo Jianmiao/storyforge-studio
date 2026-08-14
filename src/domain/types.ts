@@ -1,12 +1,13 @@
 /**
- * StoryForge Studio — 领域模型（Project Core）。
- * 本文件是 StudioProject v1 的权威 TS 定义；Rust 侧对应 crates/studio-core/src/model.rs。
+ * StoryForge Studio — 领域模型（Project Core），v2：节点式剧情编辑。
+ * v2 新增 `script` 剧本节点图（参考经典剧情节点图范式：Entry → Script → Selection → Exit，
+ * 设计独立实现）：节点为权威剧本，时间轴（scenes）降级为兼容/检查视图。
+ * 本文件是权威 TS 定义；Rust 侧对应 crates/studio-core/src/model.rs。
  * 契约文档：docs/PROJECT_FORMAT.md。
- * 本模块不依赖 React / Tauri / PixiJS，保持纯领域。
  */
 
 /** 当前项目格式版本。 */
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 
 // ---------------------------------------------------------------------------
 // 基础
@@ -43,26 +44,21 @@ export interface AssetRecord {
 }
 
 // ---------------------------------------------------------------------------
-// 缓动与关键帧
+// 缓动与关键帧（保留：演出行内过渡/动作使用；时间轴兼容模式使用）
 // ---------------------------------------------------------------------------
 
 export type EasingType = "linear" | "easeIn" | "easeOut" | "easeInOut" | "cubic";
 
 export interface Easing {
   type: EasingType;
-  /** 仅 type === "cubic"：贝塞尔控制点（相对 0..1 单位正方形）。 */
   c1?: [number, number];
   c2?: [number, number];
 }
 
 export interface Keyframe {
-  /** 片段内局部帧号（0-based）。 */
   frame: number;
-  /** 点分属性路径，如 "x"、"opacity"、"crop.left"、"assetId"。 */
   path: string;
-  /** 数值属性为 number；离散属性（assetId）为 string。 */
   value: number | string;
-  /** 控制从上一个关键帧插值到本关键帧的缓动。 */
   easing: Easing;
 }
 
@@ -80,12 +76,95 @@ export interface Actions {
   exit: ExitAction;
 }
 
-export const ACTION_ENTER_DURATION = 15; // 帧
-export const ACTION_EXIT_DURATION = 15; // 帧
+export const ACTION_ENTER_DURATION = 15;
+export const ACTION_EXIT_DURATION = 15;
 
 // ---------------------------------------------------------------------------
-// 视觉属性
+// 剧本节点图（v2 核心）
 // ---------------------------------------------------------------------------
+
+export type GraphNodeType = "entry" | "script" | "selection" | "exit";
+
+/** 演出行中的角色引用（槽位 + 动作 + 摆放）。 */
+export interface CharacterLineRef {
+  assetId: string;
+  /** 0 = 左，1 = 中，2 = 右（按槽位摆放）。 */
+  slot: number;
+  /** 待机动作：none | sway | shake | jump | pulse | flashWhite。 */
+  action: string;
+  /** 缩放（1 = 原尺寸）。 */
+  scale: number;
+}
+
+/** 演出行：一条完整演出指令（台词 + 背景 + 角色 + 音频 + 转场）。 */
+export interface ScriptLine {
+  id: string;
+  /** 台词 / 演出文本。 */
+  text: string;
+  /** 说话人显示名。 */
+  speaker: string;
+  /** 该行在场角色（按槽位摆放，可多个）。 */
+  characters: CharacterLineRef[];
+  /** 背景素材；null = 保持上一行。 */
+  bgAssetId: string | null;
+  /** 背景特效：none | blur。 */
+  bgEffect: string;
+  /** BGM 素材；null = 保持。 */
+  bgmAssetId: string | null;
+  /** 语音素材；null = 无。 */
+  voiceAssetId: string | null;
+  /** 音效素材；null = 无。 */
+  soundAssetId: string | null;
+  /** 转场：none | fade。 */
+  transition: string;
+  /** 该行持续帧数（播放/导出按帧求值）。 */
+  durationFrames: number;
+  /** 地点文本（场景说明，可选）。 */
+  placeText: string;
+}
+
+/** 剧本节点（节点图成员；可选字段按 type 生效，与 AA 节点数据模型的职责划分一致）。 */
+export interface GraphNode {
+  id: string;
+  type: GraphNodeType;
+  /** 画布坐标（节点图布局）。 */
+  x: number;
+  y: number;
+  title: string;
+  /** entry：标题下的小标题。 */
+  header?: string;
+  /** exit：结局文本。 */
+  endText?: string;
+  /** script：有序演出行。 */
+  lines?: ScriptLine[];
+  /** selection：选项文本，与 next 索引对齐（第 i 个选项 → next[i]）。 */
+  options?: string[];
+  /** 输出连接（目标节点 id）：entry/script 0..1；selection 0..N；exit 0。 */
+  next: string[];
+}
+
+/** 剧本图。 */
+export interface ScriptGraph {
+  nodes: GraphNode[];
+  /** 演出起点（entry 节点 id）。 */
+  entryNodeId: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// 时间轴兼容结构（v1 遗留；仅回退求值使用，v2 新项目不产生）
+// ---------------------------------------------------------------------------
+
+export type TrackKind =
+  | "background"
+  | "character"
+  | "camera"
+  | "subtitle"
+  | "bgm"
+  | "voice"
+  | "sfx"
+  | "effect";
+
+export type ClipType = "image" | "subtitle" | "audio" | "camera" | "effect";
 
 export interface CropRect {
   left: number;
@@ -95,20 +174,14 @@ export interface CropRect {
 }
 
 export interface VisualProps {
-  /** 中心点（画布坐标系，原点左上）。 */
   x: number;
   y: number;
   scaleX: number;
   scaleY: number;
-  /** 度。 */
   rotation: number;
-  /** 0..1 */
   opacity: number;
-  /** RGB 颜色乘法。 */
   tint: [number, number, number];
-  /** 模糊半径（px）。 */
   blur: number;
-  /** 0..1 比例裁剪。 */
   crop: CropRect;
   flipX: boolean;
 }
@@ -129,19 +202,11 @@ export function defaultVisualProps(overrides?: Partial<VisualProps>): VisualProp
   };
 }
 
-// ---------------------------------------------------------------------------
-// 片段
-// ---------------------------------------------------------------------------
-
-export type ClipType = "image" | "subtitle" | "audio" | "camera" | "effect";
-
 interface ClipBase {
   id: string;
   type: ClipType;
   name: string;
-  /** 片段内局部帧号起点。 */
   start: number;
-  /** 帧数（区间 [start, start+duration)）。 */
   duration: number;
   keyframes: Keyframe[];
 }
@@ -187,20 +252,6 @@ export interface EffectClip extends ClipBase {
 
 export type Clip = ImageClip | SubtitleClip | AudioClip | CameraClip | EffectClip;
 
-// ---------------------------------------------------------------------------
-// 轨道 / 场景
-// ---------------------------------------------------------------------------
-
-export type TrackKind =
-  | "background"
-  | "character"
-  | "camera"
-  | "subtitle"
-  | "bgm"
-  | "voice"
-  | "sfx"
-  | "effect";
-
 export interface Track {
   id: string;
   kind: TrackKind;
@@ -239,43 +290,81 @@ export interface StudioProject {
   meta: { name: string; createdAt: string; updatedAt: string };
   canvas: CanvasConfig;
   assets: AssetRecord[];
+  /** 剧本节点图（v2 权威剧本）。 */
+  script: ScriptGraph;
+  /** v1 遗留时间轴（迁移保留；v2 新项目为空数组）。 */
   scenes: Scene[];
   export: ExportConfig;
 }
 
 export function defaultProject(name: string): StudioProject {
   const now = new Date().toISOString();
-  const sceneId = "scn_1";
-  const trackId = (kind: TrackKind, i: number) => `trk_${kind}_${i}`;
+  const entryId = "nd_entry";
+  const exitId = "nd_exit";
   return {
     formatVersion: FORMAT_VERSION,
     meta: { name, createdAt: now, updatedAt: now },
     canvas: { width: 1920, height: 1080, fps: 30 },
     assets: [],
-    scenes: [
-      {
-        id: sceneId,
-        name: "场景 1",
-        durationFrames: 30 * 30, // 30 秒
-        tracks: [
-          { id: trackId("background", 0), kind: "background", name: "背景", muted: false, clips: [] },
-          { id: trackId("character", 0), kind: "character", name: "角色", muted: false, clips: [] },
-          { id: trackId("camera", 0), kind: "camera", name: "镜头", muted: false, clips: [] },
-          { id: trackId("subtitle", 0), kind: "subtitle", name: "字幕", muted: false, clips: [] },
-          { id: trackId("bgm", 0), kind: "bgm", name: "BGM", muted: false, clips: [] },
-          { id: trackId("voice", 0), kind: "voice", name: "语音", muted: false, clips: [] },
-          { id: trackId("sfx", 0), kind: "sfx", name: "音效", muted: false, clips: [] },
-          { id: trackId("effect", 0), kind: "effect", name: "特效", muted: false, clips: [] },
-        ],
-      },
-    ],
-    export: { width: 1920, height: 1080, fps: 30, videoCodec: "h264", crf: 18, preset: "veryfast", audioBitrateKbps: 192 },
+    script: {
+      entryNodeId: entryId,
+      nodes: [
+        { id: entryId, type: "entry", x: 60, y: 240, title: "开场", header: "剧本开始", next: ["nd_script1"] },
+        {
+          id: "nd_script1",
+          type: "script",
+          x: 340,
+          y: 240,
+          title: "第一场",
+          next: [exitId],
+          lines: [
+            {
+              id: "ln_1",
+              text: "在这里编写第一句台词。",
+              speaker: "",
+              characters: [],
+              bgAssetId: null,
+              bgEffect: "none",
+              bgmAssetId: null,
+              voiceAssetId: null,
+              soundAssetId: null,
+              transition: "none",
+              durationFrames: 30 * 5,
+              placeText: "",
+            },
+          ],
+        },
+        { id: exitId, type: "exit", x: 620, y: 240, title: "结束", endText: "全剧终", next: [] },
+      ],
+    },
+    scenes: [],
+    export: {
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      videoCodec: "h264",
+      crf: 18,
+      preset: "veryfast",
+      audioBitrateKbps: 192,
+    },
   };
 }
 
 // ---------------------------------------------------------------------------
 // 查找辅助（纯函数）
 // ---------------------------------------------------------------------------
+
+export function findGraphNode(graph: ScriptGraph, nodeId: string): GraphNode | undefined {
+  return graph.nodes.find((n) => n.id === nodeId);
+}
+
+export function findScriptLine(node: GraphNode, lineId: string): ScriptLine | undefined {
+  return node.lines?.find((l) => l.id === lineId);
+}
+
+export function findAsset(project: StudioProject, assetId: string): AssetRecord | undefined {
+  return project.assets.find((a) => a.id === assetId);
+}
 
 export function findTrack(scene: Scene, trackId: string): Track | undefined {
   return scene.tracks.find((t) => t.id === trackId);
@@ -287,8 +376,4 @@ export function findClipInScene(scene: Scene, clipId: string): { track: Track; c
     if (index >= 0) return { track, clip: track.clips[index], index };
   }
   return undefined;
-}
-
-export function findAsset(project: StudioProject, assetId: string): AssetRecord | undefined {
-  return project.assets.find((a) => a.id === assetId);
 }

@@ -67,7 +67,7 @@ fn main() {
     let spec = RenderSpec {
         project,
         project_dir: dir.to_string_lossy().to_string(),
-        scene_id: None,
+        path: vec![], // 空 = 默认路径（selection 取第一个选项）
         width,
         height,
         fps,
@@ -99,7 +99,7 @@ fn main() {
 
     match render_project(&spec, "cli", &ffmpeg, &cancel, &on_progress) {
         Ok(path) => {
-            let total_frames = spec_scene_frames(&spec);
+            let total_frames = spec_total_frames(&spec);
             let duration = total_frames as f64 / fps as f64;
             let summary = serde_json::json!({
                 "ok": true,
@@ -123,12 +123,21 @@ fn main() {
     }
 }
 
-fn spec_scene_frames(spec: &RenderSpec) -> u64 {
+fn spec_total_frames(spec: &RenderSpec) -> u64 {
+    use studio_core::graph;
+    let path = if spec.path.is_empty() {
+        graph::linearize_default_path(&spec.project.script)
+    } else {
+        spec.path.clone()
+    };
+    let spans = graph::build_line_sequence(&spec.project.script, &path);
+    let total = graph::total_frames(&spans);
+    if total > 0 {
+        return total as u64;
+    }
     spec.project
         .scenes
-        .iter()
-        .find(|s| Some(&s.id) == spec.scene_id.as_ref())
-        .or(spec.project.scenes.first())
+        .first()
         .map(|s| s.duration_frames as u64)
         .unwrap_or(0)
 }

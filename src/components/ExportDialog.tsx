@@ -12,7 +12,6 @@ export function ExportDialog() {
   const open = useStore((s) => s.exportDialogOpen);
   const setOpen = useStore((s) => s.setExportDialogOpen);
   const document = useStore((s) => s.document);
-  const activeSceneId = useStore((s) => s.activeSceneId);
   const projectPath = useStore((s) => s.projectPath);
   const ffmpeg = useStore((s) => s.ffmpeg);
   const renderJobs = useStore((s) => s.renderJobs);
@@ -78,10 +77,12 @@ export function ExportDialog() {
     }
     const backend = await getBackend();
     const projectDir = new ProjectPaths(projectPath).root();
+    const st = useStore.getState();
     const spec: RenderSpec = {
       project: document,
       projectDir,
-      sceneId: activeSceneId ?? document.scenes[0]?.id ?? "",
+      // 导出当前播放路径；未选择过分支时为空（后端按默认路径）
+      path: st.playbackPath && st.playbackPath.length > 0 ? [...st.playbackPath] : [],
       width,
       height,
       fps,

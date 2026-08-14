@@ -37,8 +37,8 @@ export interface BackendAdapter {
   /** 素材预览 URL（tauri: convertFileSrc；mock: objectURL）。 */
   getAssetUrl(projectDir: string, asset: AssetRecord): Promise<string>;
 
-  // --- 时间轴求值（预览） ---
-  previewFrame(project: StudioProject, sceneId: string, frame: number): Promise<SceneDescriptor>;
+  // --- 时间轴求值（预览；path 为剧本演出路径，空 = 默认） ---
+  previewFrame(project: StudioProject, path: string[], frame: number): Promise<SceneDescriptor>;
 
   // --- 渲染 ---
   startRender(spec: RenderSpec): Promise<string>;

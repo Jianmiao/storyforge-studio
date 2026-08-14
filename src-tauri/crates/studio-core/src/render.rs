@@ -5,7 +5,6 @@ use crate::audio::{load_audios, AudioMixer};
 use crate::compositor::{load_images, Compositor};
 use crate::encoder::{pcm_temp_path, Encoder, EncoderConfig};
 use crate::model::Project;
-use crate::timeline;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -35,7 +34,8 @@ pub enum RenderError {
 pub struct RenderSpec {
     pub project: Project,
     pub project_dir: String,
-    pub scene_id: Option<String>,
+    /// 剧本演出路径（节点 id 序列）；空 = 默认路径。
+    pub path: Vec<String>,
     pub width: u32,
     pub height: u32,
     pub fps: u32,
@@ -99,11 +99,32 @@ pub fn render_project(
     }
     let project = &spec.project;
     let project_dir = Path::new(&spec.project_dir);
-    let scene = match &spec.scene_id {
-        Some(id) => project.scenes.iter().find(|s| &s.id == id).ok_or_else(|| RenderError::NoSuchScene(id.clone()))?,
-        None => project.scenes.first().ok_or(RenderError::NoScene)?,
-    };
-    let total = scene.duration_frames.max(1) as u64;
+    // 求值模式：剧本图优先（v2）；无剧本图回退时间轴（v1 迁移项目）
+    let use_graph = project.script.entry_node_id.is_some() && !project.script.nodes.is_empty();
+    let (total, evaluate_frame): (u64, Box<dyn Fn(u32) -> crate::timeline::SceneDescriptor + Send + Sync>) =
+        if use_graph {
+            let path = if spec.path.is_empty() {
+                crate::graph::linearize_default_path(&project.script)
+            } else {
+                spec.path.clone()
+            };
+            let spans = crate::graph::build_line_sequence(&project.script, &path);
+            let total = crate::graph::total_frames(&spans).max(1) as u64;
+            let project = project.clone();
+            let path = path.clone();
+            (
+                total,
+                Box::new(move |frame: u32| crate::graph::evaluate(&project, &path, frame)),
+            )
+        } else {
+            let scene = project.scenes.first().ok_or(RenderError::NoScene)?.clone();
+            let total = scene.duration_frames.max(1) as u64;
+            let project = project.clone();
+            (
+                total,
+                Box::new(move |frame: u32| crate::timeline::evaluate(&project, &scene, frame)),
+            )
+        };
     let fps = spec.fps.max(1);
     let width = spec.width.max(2);
     let height = spec.height.max(2);
@@ -123,7 +144,7 @@ pub fn render_project(
                 cleanup(&part, &pcm);
                 return Err(RenderError::Cancelled);
             }
-            let desc = timeline::evaluate(project, scene, frame as u32);
+            let desc = evaluate_frame(frame as u32);
             mixer.add_frame(&desc, frame as u32);
         }
         mixer.write_s16le(&pcm)?;
@@ -150,7 +171,7 @@ pub fn render_project(
             cleanup(&part, &pcm);
             return Err(RenderError::Cancelled);
         }
-        let desc = timeline::evaluate(project, scene, frame as u32);
+        let desc = evaluate_frame(frame as u32);
         compositor.composite(&desc, &mut frame_buf)?;
         encoder.write_frame(&frame_buf)?;
         if frame % 5 == 0 || frame + 1 == total {
@@ -252,14 +273,27 @@ impl RenderQueue {
                         }
                         QueueMsg::Submit(handle) => {
                             let id = handle.id.clone();
-                            let total = handle
-                                .spec
-                                .project
-                                .scenes
-                                .iter()
-                                .find(|s| Some(&s.id) == handle.spec.scene_id.as_ref())
-                                .map(|s| s.duration_frames as u64)
-                                .unwrap_or(0);
+                            // 任务总帧数（剧本图优先）
+                            let total = if handle.spec.project.script.entry_node_id.is_some()
+                                && !handle.spec.project.script.nodes.is_empty()
+                            {
+                                let path = if handle.spec.path.is_empty() {
+                                    crate::graph::linearize_default_path(&handle.spec.project.script)
+                                } else {
+                                    handle.spec.path.clone()
+                                };
+                                let spans =
+                                    crate::graph::build_line_sequence(&handle.spec.project.script, &path);
+                                crate::graph::total_frames(&spans).max(1) as u64
+                            } else {
+                                handle
+                                    .spec
+                                    .project
+                                    .scenes
+                                    .first()
+                                    .map(|s| s.duration_frames as u64)
+                                    .unwrap_or(0)
+                            };
                             let entry = JobEntry {
                                 id: id.clone(),
                                 status: Mutex::new(RenderJobStatus::Running),

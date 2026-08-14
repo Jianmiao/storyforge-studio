@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Crosshair } from "lucide-react";
+import { Crosshair, Maximize2, Minimize2 } from "lucide-react";
 import { useStore } from "../state/store";
 import { PixiRenderer } from "../preview/pixiRenderer";
 import type { RendererAdapter } from "../preview/RendererAdapter";
@@ -9,10 +9,11 @@ import { findClipInScene } from "../domain/types";
 import type { Scene } from "../domain/types";
 import { IconButton } from "./ui/IconButton";
 
-/** 画布：PixiJS 渲染 + 编辑覆盖层（选中框 / 拖拽 / 参考线）。 */
+/** 预览浮窗：PixiJS 渲染 + 编辑覆盖层（选中框 / 拖拽 / 参考线）。 */
 export function CanvasView() {
   const hostRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<RendererAdapter | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const dragRef = useRef<{
     clipId: string;
     scene: Scene;
@@ -98,12 +99,12 @@ export function CanvasView() {
     updateSelectionBox();
   }, [selectedClipId, playhead, document, activeSceneId, hostSize, updateSelectionBox]);
 
-  // 指针交互：命中检测 + 拖拽
+  // 指针交互：命中检测 + 拖拽（时间轴模式）；节点模式仅命中选中
   const onPointerDown = (e: React.PointerEvent) => {
     const st = useStore.getState();
-    if (!st.document || !st.activeSceneId || !rendererRef.current) return;
+    if (!st.document || !rendererRef.current) return;
     if (st.playing) st.setPlaying(false);
-    const scene = st.document.scenes.find((s) => s.id === st.activeSceneId) ?? st.document.scenes[0];
+    const useGraph = !!st.document.script.entryNodeId && st.document.script.nodes.length > 0;
     const desc = getLastDesc();
     const renderer = rendererRef.current;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -127,7 +128,21 @@ export function CanvasView() {
       st.selectClip(null);
       return;
     }
+    if (useGraph) {
+      // 节点模式：layer.id 形如 bg_<nodeId> / char_<assetId>_<nodeId> / sub_<lineId>
+      const parts = hitId.split("_");
+      const nodeId = parts[parts.length - 1];
+      const node = st.document.script.nodes.find((n) => n.id === nodeId);
+      if (node) {
+        st.selectNode(node.id);
+        return;
+      }
+      st.selectClip(null);
+      return;
+    }
     st.selectClip(hitId);
+    const scene = st.document.scenes.find((s) => s.id === st.activeSceneId) ?? st.document.scenes[0];
+    if (!scene) return;
     dragRef.current = {
       clipId: hitId,
       scene,
@@ -191,7 +206,13 @@ export function CanvasView() {
   };
 
   return (
-    <div className="center-panel" data-testid="canvas">
+    <div className={`preview-dock ${expanded ? "expanded" : ""}`} data-testid="canvas">
+      <div className="preview-dock-head">
+        <span style={{ fontSize: 11, color: "var(--text-2)", fontWeight: 600 }}>预览</span>
+        <IconButton tip={expanded ? "收起预览（回到节点编辑）" : "展开预览"} onClick={() => setExpanded(!expanded)}>
+          {expanded ? <Minimize2 /> : <Maximize2 />}
+        </IconButton>
+      </div>
       <div
         className="canvas-host"
         ref={hostRef}
@@ -231,9 +252,7 @@ export function CanvasView() {
         </IconButton>
       </div>
       <div className="playback-badge">
-        {String(playhead).padStart(4, "0")} /{" "}
-        {(document && ((document.scenes.find((s) => s.id === activeSceneId) ?? document.scenes[0])?.durationFrames ?? 0))} 帧
-        {playing ? " ▶" : ""}
+        {String(playhead).padStart(4, "0")} 帧{playing ? " ▶" : ""}
       </div>
     </div>
   );

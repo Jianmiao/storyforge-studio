@@ -12,6 +12,7 @@
 import { applyEasing, lerp } from "../domain/easing";
 import { ACTION_ENTER_DURATION, ACTION_EXIT_DURATION } from "../domain/types";
 import type { Clip, Keyframe, Scene, StudioProject } from "../domain/types";
+import { buildLineSequence, lineSpanAt } from "../domain/graph";
 import type { AudioDescriptor, EffectDescriptor, LayerDescriptor, SceneDescriptor, SubtitleDescriptor } from "../shared/descriptor";
 
 export function isDevEvaluatorAvailable(): boolean {
@@ -225,6 +226,173 @@ function applyFade(vol: number, lf: number, duration: number, fadeIn: number, fa
   if (fadeIn > 0 && lf < fadeIn) v *= lf / fadeIn;
   if (fadeOut > 0 && lf >= duration - fadeOut) v *= Math.max(0, (duration - lf) / fadeOut);
   return v;
+}
+
+/**
+ * 剧本节点图求值（DEV 替身；产品实现为 Rust graph.rs，语义一致）：
+ * 按 path 展开演出行序列，定位 frame 所在行，生成 SceneDescriptor。
+ */
+export function evaluateGraphFrame(
+  project: StudioProject,
+  path: string[],
+  frame: number,
+): SceneDescriptor {
+  const graph = project.script;
+  const W = project.canvas.width;
+  const H = project.canvas.height;
+  const fps = project.canvas.fps;
+  const spans = buildLineSequence(graph, path);
+  const total = spans.reduce((acc, s) => acc + s.durationFrames, 0);
+  const frameClamped = Math.max(0, Math.min(frame, Math.max(0, total - 1)));
+  const span = lineSpanAt(spans, frameClamped);
+
+  const layers: LayerDescriptor[] = [];
+  const subtitles: SubtitleDescriptor[] = [];
+  const effects: EffectDescriptor[] = [];
+  const audio: AudioDescriptor[] = [];
+  const camera = { x: 0, y: 0, zoom: 1 };
+
+  if (!span) {
+    return { frame: frameClamped, width: W, height: H, fps, durationFrames: total, camera, layers, subtitles, effects, audio };
+  }
+  const lf = frameClamped - span.startFrame;
+  const line = span.line;
+
+  // 背景 / BGM 状态继承：取当前行及之前最近的设置
+  let bgAssetId: string | null = null;
+  let bgEffect = "none";
+  let bgmAssetId: string | null = null;
+  for (const s of spans) {
+    if (s.startFrame > frameClamped) break;
+    if (s.line.bgAssetId) {
+      bgAssetId = s.line.bgAssetId;
+      bgEffect = s.line.bgEffect;
+    }
+    if (s.line.bgmAssetId) bgmAssetId = s.line.bgmAssetId;
+  }
+
+  // 背景层
+  if (bgAssetId) {
+    layers.push({
+      id: `bg_${span.nodeId}_${line.id}`,
+      kind: "image",
+      assetId: bgAssetId,
+      x: W / 2,
+      y: H / 2,
+      scaleX: Math.max(W / 1920, H / 1080),
+      scaleY: Math.max(W / 1920, H / 1080),
+      rotation: 0,
+      opacity: 1,
+      tint: [255, 255, 255],
+      blur: 0,
+      crop: { left: 0, right: 0, top: 0, bottom: 0 },
+      flipX: false,
+      flash: 0,
+    });
+  }
+
+  // 角色层（按槽位摆放：0 左 / 1 中 / 2 右）
+  const slotX = [W * 0.26, W * 0.5, W * 0.74];
+  for (const ch of line.characters) {
+    const sway = ch.action === "sway" ? Math.sin((2 * Math.PI * lf) / 60) * 5 : 0;
+    const shake = ch.action === "shake" ? (jitter(frameClamped, 1) - 0.5) * 6 : 0;
+    const jump = ch.action === "jump" ? -Math.sin(Math.PI * ((lf % 30) / 30)) * 40 : 0;
+    const pulse =
+      ch.action === "pulse" ? 1 + 0.08 * Math.sin((2 * Math.PI * lf) / 30) : 1;
+    const flash = ch.action === "flashWhite" ? Math.sin((2 * Math.PI * lf) / 20) * 0.5 + 0.5 : 0;
+    layers.push({
+      id: `char_${ch.assetId}_${span.nodeId}`,
+      kind: "image",
+      assetId: ch.assetId,
+      x: slotX[ch.slot] ?? slotX[1],
+      y: H * 0.58,
+      scaleX: (0.9 * ch.scale * pulse) / (720 / H),
+      scaleY: (0.9 * ch.scale * pulse) / (720 / H),
+      rotation: 0,
+      opacity: 1,
+      tint: [255, 255, 255],
+      blur: 0,
+      crop: { left: 0, right: 0, top: 0, bottom: 0 },
+      flipX: false,
+      flash,
+    });
+    void sway;
+    void shake;
+    void jump;
+  }
+
+  // 字幕（说话人 + 台词；地点文本作为副标题）
+  const speakerLine = line.speaker ? `${line.speaker}：${line.text}` : line.text;
+  const subtitleText = line.placeText ? `${line.placeText}\n${speakerLine}` : speakerLine;
+  if (line.text) {
+    subtitles.push({
+      id: `sub_${line.id}`,
+      text: subtitleText,
+      x: W / 2,
+      y: H - 130,
+      fontSize: 52,
+      color: "#ffffff",
+      align: "center",
+      outlineWidth: 4,
+      opacity: 1,
+    });
+  }
+
+  // 转场（行首 fade：黑场淡入）
+  if (line.transition === "fade" && lf < ACTION_ENTER_DURATION) {
+    const alpha = 1 - applyEasing(lf / ACTION_ENTER_DURATION, { type: "easeInOut" });
+    effects.push({ type: "transition", params: { color: "#000000", alpha } });
+  }
+
+  // 背景特效
+  if (bgEffect === "blur") {
+    effects.push({ type: "blur", params: { radius: 8 } });
+  }
+
+  // 音频：BGM 持续到结尾；语音/音效在当前行区间
+  if (bgmAssetId) {
+    audio.push({
+      assetId: bgmAssetId,
+      startFrame: 0,
+      durationFrames: total,
+      volume: 0.7,
+      fadeInFrames: 30,
+      fadeOutFrames: 60,
+    });
+  }
+  if (line.voiceAssetId) {
+    audio.push({
+      assetId: line.voiceAssetId,
+      startFrame: span.startFrame,
+      durationFrames: span.durationFrames,
+      volume: 0.9,
+      fadeInFrames: 2,
+      fadeOutFrames: 6,
+    });
+  }
+  if (line.soundAssetId) {
+    audio.push({
+      assetId: line.soundAssetId,
+      startFrame: span.startFrame,
+      durationFrames: span.durationFrames,
+      volume: 0.85,
+      fadeInFrames: 2,
+      fadeOutFrames: 6,
+    });
+  }
+
+  return {
+    frame: frameClamped,
+    width: W,
+    height: H,
+    fps,
+    durationFrames: total,
+    camera,
+    layers,
+    subtitles,
+    effects,
+    audio,
+  };
 }
 
 function clamp01(v: number): number {
