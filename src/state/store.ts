@@ -317,8 +317,9 @@ export const useStore = create<EditorState>((set, get) => ({
         selectedClipId: null,
         selectedNodeId: null,
         selectedLineId: null,
-        toast: { kind: "success", text: "演示项目已创建" },
+        toast: null,
       });
+      get().showToast("演示项目已创建", "success");
     } catch (e) {
       get().showToast(`创建演示项目失败: ${(e as Error).message}`, "error");
     }

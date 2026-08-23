@@ -1,0 +1,31 @@
+@font-face {
+  font-family: "SF HarmonyOS Sans";
+  src: url("../assets/fonts/HarmonyOS_Sans_Medium.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 500;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "SF HarmonyOS Sans SC";
+  src: url("../assets/fonts/HarmonyOS_Sans_SC_Medium.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 500;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "SF Noto Sans SC";
+  src: url("../assets/fonts/NotoSansSC-Variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "SF Nowar Rounded";
+  src: url("../assets/fonts/NowarRounded-PSimp-400.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}

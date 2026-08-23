@@ -18,6 +18,12 @@ export interface RendererAdapter {
   /** 容器尺寸变化（CSS 像素）。 */
   resize(width: number, height: number): void;
 
+  /** 更新运行时对白字体；不改变场景求值结果。 */
+  setFontFamily(fontFamily: string): void;
+
+  /** 注入稳定素材 ID 到运行时预览 URL 的映射。 */
+  setAssetUrls(assetUrls: Readonly<Record<string, string>>): Promise<void>;
+
   /** 最近一次渲染帧中某图层（clipId）的世界坐标包围盒（轴对齐近似），用于选中/命中。 */
   getLayerBounds(layerId: string): { x: number; y: number; w: number; h: number } | null;
 
