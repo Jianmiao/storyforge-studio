@@ -116,5 +116,21 @@ export function migrateProject(raw: unknown): StudioProject {
     doc = m.migrate(doc);
     version = m.to;
   }
+  // v2 项目可能由早期节点编辑器写出，缺少姓名牌社团字段时按空值兼容。
+  const script = (doc.script ?? {}) as Record<string, unknown>;
+  if (Array.isArray(script.nodes)) {
+    script.nodes = script.nodes.map((node) => {
+      if (!node || typeof node !== "object") return node;
+      const n = node as Record<string, unknown>;
+      if (!Array.isArray(n.lines)) return n;
+      n.lines = n.lines.map((line) => {
+        if (!line || typeof line !== "object") return line;
+        const l = line as Record<string, unknown>;
+        return { ...l, clubName: typeof l.clubName === "string" ? l.clubName : "" };
+      });
+      return n;
+    });
+    doc.script = script;
+  }
   return doc as unknown as StudioProject;
 }

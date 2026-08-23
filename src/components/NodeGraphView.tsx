@@ -326,6 +326,7 @@ function makeEmptyLine(doc: StudioProject): ScriptLine {
     id: newId("ln"),
     text: "",
     speaker: "",
+    clubName: "",
     characters: [],
     bgAssetId: doc.assets.find((a) => a.kind === "image")?.id ?? null,
     bgEffect: "none",

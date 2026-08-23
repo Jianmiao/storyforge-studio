@@ -68,11 +68,34 @@ pub struct GraphNode {
 #[serde(rename_all = "camelCase")]
 pub struct CharacterLineRef {
     pub asset_id: String,
-    /// 0 = 左，1 = 中，2 = 右。
+    /// 旧工程三槽：0 = 左，1 = 中，2 = 右。
     pub slot: i64,
     /// 待机动作：none | sway | shake | jump | pulse | flashWhite。
     pub action: String,
     pub scale: f64,
+    /// AA 语义六槽（1..6）；缺失时继续按旧三槽解释 slot。
+    #[serde(default)]
+    pub start_slot: Option<i64>,
+    #[serde(default)]
+    pub end_slot: Option<i64>,
+    #[serde(default)]
+    pub appear: Option<String>,
+    #[serde(default)]
+    pub move_duration_frames: Option<i64>,
+    #[serde(default)]
+    pub move_easing: Option<String>,
+    #[serde(default)]
+    pub highlighted: Option<bool>,
+    #[serde(default)]
+    pub luminance: Option<f64>,
+    #[serde(default)]
+    pub on_top: bool,
+    #[serde(default)]
+    pub closeup: bool,
+    #[serde(default)]
+    pub face_id: Option<String>,
+    #[serde(default)]
+    pub shape_override: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -81,6 +104,8 @@ pub struct ScriptLine {
     pub id: String,
     pub text: String,
     pub speaker: String,
+    #[serde(default)]
+    pub club_name: String,
     pub characters: Vec<CharacterLineRef>,
     pub bg_asset_id: Option<String>,
     pub bg_effect: String,

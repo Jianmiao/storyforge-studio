@@ -70,6 +70,7 @@ export function buildDemoProject(now: string): StudioProject {
               id: "ln_open",
               text: "夜色降临，故事开始。",
               speaker: "",
+              clubName: "",
               characters: [
                 { assetId: "ast_char", slot: 1, action: "sway", scale: 1 },
               ],
@@ -94,10 +95,16 @@ export function buildDemoProject(now: string): StudioProject {
           lines: [
             {
               id: "ln_d1",
-              text: "欢迎来到 StoryForge，旅人。",
+              text: "欢迎来到 StoryForge，旅人。\n今晚的星光会为你指引方向。\n请准备好，故事现在开始。",
               speaker: "领航员",
+              clubName: "StoryForge",
               characters: [
-                { assetId: "ast_char", slot: 1, action: "sway", scale: 1 },
+                { assetId: "ast_char", slot: 0, endSlot: 1, action: "none", scale: 0.78, highlighted: false },
+                { assetId: "ast_char", slot: 0, endSlot: 2, action: "sway", scale: 0.82, highlighted: false },
+                { assetId: "ast_char", slot: 1, endSlot: 3, action: "none", scale: 0.9, highlighted: true, onTop: true },
+                { assetId: "ast_char", slot: 1, endSlot: 4, action: "none", scale: 0.86, highlighted: false },
+                { assetId: "ast_char", slot: 2, endSlot: 5, action: "sway", scale: 0.82, highlighted: false },
+                { assetId: "ast_char", slot: 2, endSlot: 6, action: "none", scale: 0.78, highlighted: false },
               ],
               bgAssetId: null,
               bgEffect: "none",
@@ -131,6 +138,7 @@ export function buildDemoProject(now: string): StudioProject {
               id: "ln_a1",
               text: "你选择了支线——一道闪光划过夜空。",
               speaker: "领航员",
+              clubName: "StoryForge",
               characters: [
                 { assetId: "ast_char", slot: 1, action: "flashWhite", scale: 1 },
               ],
@@ -157,6 +165,7 @@ export function buildDemoProject(now: string): StudioProject {
               id: "ln_b1",
               text: "你选择了直接结束。故事留待来日。",
               speaker: "领航员",
+              clubName: "StoryForge",
               characters: [
                 { assetId: "ast_char", slot: 1, action: "sway", scale: 1 },
               ],

@@ -43,6 +43,7 @@ fn line(
         id: id.into(),
         text: text.into(),
         speaker: speaker.into(),
+        club_name: if speaker.is_empty() { String::new() } else { "StoryForge".into() },
         characters,
         bg_asset_id: bg_asset_id.map(|s| s.into()),
         bg_effect: bg_effect.into(),
@@ -61,7 +62,27 @@ fn char_ref(asset_id: &str, slot: i64, action: &str) -> CharacterLineRef {
         slot,
         action: action.into(),
         scale: 1.0,
+        start_slot: None,
+        end_slot: None,
+        appear: None,
+        move_duration_frames: None,
+        move_easing: None,
+        highlighted: None,
+        luminance: None,
+        on_top: false,
+        closeup: false,
+        face_id: None,
+        shape_override: None,
     }
+}
+
+fn presentation_char_ref(slot: i64, highlighted: bool, scale: f64) -> CharacterLineRef {
+    let mut character = char_ref("ast_char", (slot - 1).clamp(0, 2), if slot == 2 || slot == 5 { "sway" } else { "none" });
+    character.end_slot = Some(slot);
+    character.highlighted = Some(highlighted);
+    character.on_top = highlighted;
+    character.scale = scale;
+    character
 }
 
 /// 创建演示项目目录 + 素材 + 项目文件（节点式剧本，默认路径 360 帧 = 12 秒）。
@@ -215,9 +236,16 @@ fn demo_graph() -> ScriptGraph {
                 end_text: None,
                 lines: Some(vec![line(
                     "ln_d1",
-                    "欢迎来到 StoryForge，旅人。",
+                    "欢迎来到 StoryForge，旅人。\n今晚的星光会为你指引方向。\n请准备好，故事现在开始。",
                     "领航员",
-                    vec![char_ref("ast_char", 1, "sway")],
+                    vec![
+                        presentation_char_ref(1, false, 0.78),
+                        presentation_char_ref(2, false, 0.82),
+                        presentation_char_ref(3, true, 0.9),
+                        presentation_char_ref(4, false, 0.86),
+                        presentation_char_ref(5, false, 0.82),
+                        presentation_char_ref(6, false, 0.78),
+                    ],
                     None,
                     "none",
                     None,

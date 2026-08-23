@@ -119,6 +119,7 @@ function validateScriptGraph(doc: StudioProject, assetIds: Set<string>, errors: 
     }
     if (node.type === "script" && node.lines) {
       for (const line of node.lines) {
+        if (typeof line.clubName !== "string") errors.push(`演出行 ${line.id} clubName 必须是字符串`);
         if (!(line.durationFrames > 0)) errors.push(`演出行 ${line.id} 时长非法`);
         if (line.bgAssetId && !assetIds.has(line.bgAssetId)) {
           errors.push(`演出行 ${line.id} 引用不存在的背景素材 ${line.bgAssetId}`);
@@ -126,6 +127,17 @@ function validateScriptGraph(doc: StudioProject, assetIds: Set<string>, errors: 
         for (const ch of line.characters) {
           if (!assetIds.has(ch.assetId)) {
             errors.push(`演出行 ${line.id} 引用不存在的角色素材 ${ch.assetId}`);
+          }
+          for (const [name, value] of [["startSlot", ch.startSlot], ["endSlot", ch.endSlot]] as const) {
+            if (value !== undefined && (!Number.isInteger(value) || value < 1 || value > 6)) {
+              errors.push(`演出行 ${line.id} 的 ${name} 必须是 1..6`);
+            }
+          }
+          if (ch.moveDurationFrames !== undefined && !(ch.moveDurationFrames > 0)) {
+            errors.push(`演出行 ${line.id} 的 moveDurationFrames 必须大于 0`);
+          }
+          if (ch.luminance !== undefined && !(ch.luminance >= 0 && ch.luminance <= 1)) {
+            errors.push(`演出行 ${line.id} 的 luminance 必须在 0..1`);
           }
         }
       }

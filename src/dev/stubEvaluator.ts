@@ -13,7 +13,8 @@ import { applyEasing, lerp } from "../domain/easing";
 import { ACTION_ENTER_DURATION, ACTION_EXIT_DURATION } from "../domain/types";
 import type { Clip, Keyframe, Scene, StudioProject } from "../domain/types";
 import { buildLineSequence, lineSpanAt } from "../domain/graph";
-import type { AudioDescriptor, EffectDescriptor, LayerDescriptor, SceneDescriptor, SubtitleDescriptor } from "../shared/descriptor";
+import type { AudioDescriptor, EffectDescriptor, LayerDescriptor, PresentationDialogue, SceneDescriptor, SubtitleDescriptor } from "../shared/descriptor";
+import { evaluateCharacterPresentation, evaluateTypewriter } from "../preview/aaRuntime";
 
 export function isDevEvaluatorAvailable(): boolean {
   return import.meta.env.DEV === true;
@@ -69,6 +70,7 @@ export function evaluateFrame(project: StudioProject, sceneId: string, frame: nu
   const camera = { x: 0, y: 0, zoom: 1 };
   const layers: LayerDescriptor[] = [];
   const subtitles: SubtitleDescriptor[] = [];
+  const presentationDialogues: PresentationDialogue[] = [];
   const effects: EffectDescriptor[] = [];
   const audio: AudioDescriptor[] = [];
 
@@ -216,6 +218,7 @@ export function evaluateFrame(project: StudioProject, sceneId: string, frame: nu
     camera,
     layers,
     subtitles,
+    presentationDialogues,
     effects,
     audio,
   };
@@ -248,12 +251,13 @@ export function evaluateGraphFrame(
 
   const layers: LayerDescriptor[] = [];
   const subtitles: SubtitleDescriptor[] = [];
+  const presentationDialogues: PresentationDialogue[] = [];
   const effects: EffectDescriptor[] = [];
   const audio: AudioDescriptor[] = [];
   const camera = { x: 0, y: 0, zoom: 1 };
 
   if (!span) {
-    return { frame: frameClamped, width: W, height: H, fps, durationFrames: total, camera, layers, subtitles, effects, audio };
+    return { frame: frameClamped, width: W, height: H, fps, durationFrames: total, camera, layers, subtitles, presentationDialogues, effects, audio };
   }
   const lf = frameClamped - span.startFrame;
   const line = span.line;
@@ -288,12 +292,13 @@ export function evaluateGraphFrame(
       crop: { left: 0, right: 0, top: 0, bottom: 0 },
       flipX: false,
       flash: 0,
+      zIndex: 0,
     });
   }
 
-  // 角色层（按槽位摆放：0 左 / 1 中 / 2 右）
-  const slotX = [W * 0.26, W * 0.5, W * 0.74];
-  for (const ch of line.characters) {
+  // 角色层：新行使用固定六槽；旧行缺少 startSlot/endSlot 时保持三槽兼容。
+  for (const [characterIndex, ch] of line.characters.entries()) {
+    const presentation = evaluateCharacterPresentation(ch, lf, fps, W, H);
     const sway = ch.action === "sway" ? Math.sin((2 * Math.PI * lf) / 60) * 5 : 0;
     const shake = ch.action === "shake" ? (jitter(frameClamped, 1) - 0.5) * 6 : 0;
     const jump = ch.action === "jump" ? -Math.sin(Math.PI * ((lf % 30) / 30)) * 40 : 0;
@@ -301,30 +306,30 @@ export function evaluateGraphFrame(
       ch.action === "pulse" ? 1 + 0.08 * Math.sin((2 * Math.PI * lf) / 30) : 1;
     const flash = ch.action === "flashWhite" ? Math.sin((2 * Math.PI * lf) / 20) * 0.5 + 0.5 : 0;
     layers.push({
-      id: `char_${ch.assetId}_${span.nodeId}`,
+      id: `char_${ch.assetId}_${ch.endSlot ?? ch.slot}_${characterIndex}_${span.nodeId}`,
       kind: "image",
       assetId: ch.assetId,
-      x: slotX[ch.slot] ?? slotX[1],
-      y: H * 0.58,
-      scaleX: (0.9 * ch.scale * pulse) / (720 / H),
-      scaleY: (0.9 * ch.scale * pulse) / (720 / H),
+      x: presentation.x + sway + shake,
+      y: presentation.y + jump,
+      scaleX: (0.9 * presentation.scale * pulse) / (720 / H),
+      scaleY: (0.9 * presentation.scale * pulse) / (720 / H),
       rotation: 0,
-      opacity: 1,
-      tint: [255, 255, 255],
+      opacity: presentation.opacity,
+      tint: [255, 255, 255].map((channel) => Math.round(channel * presentation.luminance)) as [number, number, number],
       blur: 0,
       crop: { left: 0, right: 0, top: 0, bottom: 0 },
       flipX: false,
       flash,
+      zIndex: presentation.zIndex,
     });
-    void sway;
-    void shake;
-    void jump;
   }
+  layers.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
 
-  // 字幕（说话人 + 台词；地点文本作为副标题）
+  // 兼容字幕保留旧拼接文本；运行时鉴赏画面消费结构化对白。
   const speakerLine = line.speaker ? `${line.speaker}：${line.text}` : line.text;
   const subtitleText = line.placeText ? `${line.placeText}\n${speakerLine}` : speakerLine;
   if (line.text) {
+    const typewriter = evaluateTypewriter(line.text, lf);
     subtitles.push({
       id: `sub_${line.id}`,
       text: subtitleText,
@@ -335,6 +340,21 @@ export function evaluateGraphFrame(
       align: "center",
       outlineWidth: 4,
       opacity: 1,
+    });
+    presentationDialogues.push({
+      id: `dialogue_${line.id}`,
+      text: line.text,
+      speaker: line.speaker,
+      clubName: line.clubName,
+      placeText: line.placeText,
+      x: 92,
+      nameY: H - 258,
+      bodyY: H - 194,
+      fontSize: 48,
+      opacity: 1,
+      outlineWidth: 4,
+      visibleText: typewriter.visibleText,
+      revealComplete: typewriter.complete,
     });
   }
 
@@ -390,6 +410,7 @@ export function evaluateGraphFrame(
     camera,
     layers,
     subtitles,
+    presentationDialogues,
     effects,
     audio,
   };
