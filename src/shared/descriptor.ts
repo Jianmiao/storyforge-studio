@@ -26,6 +26,8 @@ export interface LayerDescriptor {
   flipX: boolean;
   /** 0..1 白闪强度（flashWhite 动作）。 */
   flash: number;
+  /** 稳定绘制层级；数值越大越靠前。旧描述符缺失时按数组顺序。 */
+  zIndex?: number;
 }
 
 export interface SubtitleDescriptor {
@@ -38,6 +40,24 @@ export interface SubtitleDescriptor {
   align: "left" | "center" | "right";
   outlineWidth: number;
   opacity: number;
+}
+
+/** AA 风格鉴赏对白：姓名牌与正文分层，避免把说话人/地点拼成一段文本。 */
+export interface PresentationDialogue {
+  id: string;
+  text: string;
+  speaker: string;
+  clubName: string;
+  placeText: string;
+  x: number;
+  nameY: number;
+  bodyY: number;
+  fontSize: number;
+  opacity: number;
+  outlineWidth: number;
+  /** 当前帧已显示的文本；缺失时兼容为完整 text。 */
+  visibleText?: string;
+  revealComplete?: boolean;
 }
 
 export type EffectDescriptorType = "vignette" | "flash" | "shake" | "tint" | "blur" | "transition";
@@ -71,6 +91,7 @@ export interface SceneDescriptor {
   /** 按合成顺序排列（后绘制在上）。 */
   layers: LayerDescriptor[];
   subtitles: SubtitleDescriptor[];
+  presentationDialogues: PresentationDialogue[];
   effects: EffectDescriptor[];
   audio: AudioDescriptor[];
 }

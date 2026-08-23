@@ -88,12 +88,28 @@ export type GraphNodeType = "entry" | "script" | "selection" | "exit";
 /** 演出行中的角色引用（槽位 + 动作 + 摆放）。 */
 export interface CharacterLineRef {
   assetId: string;
-  /** 0 = 左，1 = 中，2 = 右（按槽位摆放）。 */
+  /** 旧工程三槽：0 = 左，1 = 中，2 = 右。 */
   slot: number;
   /** 待机动作：none | sway | shake | jump | pulse | flashWhite。 */
   action: string;
   /** 缩放（1 = 原尺寸）。 */
   scale: number;
+  /** AA 语义六槽（1..6）；缺失时继续按旧三槽解释 slot。 */
+  startSlot?: number;
+  endSlot?: number;
+  /** 进入/退出可见性语义。 */
+  appear?: "none" | "fadeIn" | "fadeOut" | "hide" | "move";
+  /** 移动时长与缓动；缺失时为 0.5 秒 easeInOut。 */
+  moveDurationFrames?: number;
+  moveEasing?: EasingType;
+  /** 演出状态。false 使用 AA 的 0.6 待机亮度。 */
+  highlighted?: boolean;
+  luminance?: number;
+  onTop?: boolean;
+  closeup?: boolean;
+  /** 保留给适配器解析资源形态，不参与素材寻址。 */
+  faceId?: string;
+  shapeOverride?: string;
 }
 
 /** 演出行：一条完整演出指令（台词 + 背景 + 角色 + 音频 + 转场）。 */
@@ -103,6 +119,8 @@ export interface ScriptLine {
   text: string;
   /** 说话人显示名。 */
   speaker: string;
+  /** 说话人所属社团/组织显示名（AA 姓名牌的蓝色副标题）。 */
+  clubName: string;
   /** 该行在场角色（按槽位摆放，可多个）。 */
   characters: CharacterLineRef[];
   /** 背景素材；null = 保持上一行。 */
@@ -121,6 +139,21 @@ export interface ScriptLine {
   durationFrames: number;
   /** 地点文本（场景说明，可选）。 */
   placeText: string;
+}
+
+/** 运行时鉴赏画面的结构化对白。 */
+export interface PresentationDialogue {
+  id: string;
+  text: string;
+  speaker: string;
+  clubName: string;
+  placeText: string;
+  x: number;
+  nameY: number;
+  bodyY: number;
+  fontSize: number;
+  opacity: number;
+  outlineWidth: number;
 }
 
 /** 剧本节点（节点图成员；可选字段按 type 生效，与 AA 节点数据模型的职责划分一致）。 */
@@ -322,6 +355,7 @@ export function defaultProject(name: string): StudioProject {
               id: "ln_1",
               text: "在这里编写第一句台词。",
               speaker: "",
+              clubName: "",
               characters: [],
               bgAssetId: null,
               bgEffect: "none",

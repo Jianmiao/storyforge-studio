@@ -49,6 +49,8 @@ body {
 
 .app-shell {
   display: grid;
+  width: 100%;
+  min-width: 0;
   grid-template-columns: 272px 1fr;
   grid-template-rows: 46px 1fr 220px 28px;
   grid-template-areas:
@@ -106,7 +108,13 @@ body {
   background: var(--bg-1);
   border-top: 1px solid var(--border);
   min-height: 0;
+  min-width: 0;
   z-index: 10;
+}
+
+.timeline-header,
+.timeline-scroll {
+  min-width: 0;
 }
 
 .statusbar {
@@ -895,12 +903,14 @@ select {
 }
 
 .preview-dock.expanded {
+  position: fixed;
   inset: 0;
   width: auto;
   height: auto;
   border: none;
   border-radius: 0;
-  z-index: 9;
+  z-index: 40;
+  background: #080c14;
 }
 
 .preview-dock-head {
@@ -923,6 +933,11 @@ select {
 .preview-dock .canvas-toolbar,
 .preview-dock .playback-badge {
   position: absolute;
+}
+
+/* 标题栏保留字体/展开操作；参考线工具栏下移，避免覆盖右上角按钮。 */
+.preview-dock .canvas-toolbar {
+  top: 42px;
 }
 
 /* ---------------- 播放选择覆盖层 ---------------- */
@@ -1082,6 +1097,31 @@ select {
 .char-row input {
   flex: 1;
   min-width: 0;
+}
+
+.preview-font-control {
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-2);
+}
+
+.preview-font-control svg {
+  width: 14px;
+  height: 14px;
+}
+
+.preview-font-control select {
+  width: 164px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-1);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 11px;
+  padding: 0 22px 0 7px;
 }
 
 /* ---------------- 滚动条 ---------------- */

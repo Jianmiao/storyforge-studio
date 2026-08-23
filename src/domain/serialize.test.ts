@@ -38,6 +38,12 @@ describe("演示项目文档", () => {
     // 选择分支存在
     expect(doc.script.nodes.some((n) => n.type === "selection" && n.options && n.options.length >= 2)).toBe(true);
   });
+
+  it("演示对白固定包含三行预览文本", () => {
+    const doc = buildDemoProject("2026-01-01T00:00:00Z");
+    const line = doc.script.nodes.find((node) => node.id === "nd_dialog")?.lines?.[0];
+    expect(line?.text.split("\n")).toHaveLength(3);
+  });
 });
 
 describe("结构化路径 API", () => {

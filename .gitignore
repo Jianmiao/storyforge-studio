@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.worktrees/
 dist/
 target/
 
@@ -21,3 +22,12 @@ e2e/.tmp/
 .DS_Store
 Thumbs.db
 *.log
+
+# Local reference repositories and reverse-engineering inputs
+.halocue-main-cleanup/
+AzureArchive_0.8.8_decompiled_full/
+HaloCue-1.0-source-20260822-final/
+HaloCue-1.0-后端协作交接包-*/
+HarmonyOS-Sans/
+HarmonyOS_Icons/
+LingChat/

@@ -3,10 +3,17 @@
 //! 预览（IPC）与离线渲染共用本模块。
 
 use crate::model::{Easing, GraphNodeType, Project, ScriptGraph, ScriptLine};
-use crate::timeline::{apply_easing, SceneDescriptor};
+use crate::timeline::{apply_easing, PresentationDialogue, SceneDescriptor};
 use std::collections::HashMap;
+use unicode_segmentation::UnicodeSegmentation;
 
 pub const ACTION_FADE_FRAMES: i64 = 15;
+pub const AA_STANDBY_LUMINANCE: f64 = 0.6;
+pub const AA_MOVE_SECONDS: f64 = 0.5;
+const PRESENTATION_SLOT_OFFSETS: [f64; 6] = [-925.0, -555.0, -185.0, 185.0, 555.0, 925.0];
+const LEGACY_SLOT_RATIOS: [f64; 3] = [0.26, 0.5, 0.74];
+const TYPEWRITER_NEWLINE_PAUSE_FRAMES: i64 = 6;
+const TYPEWRITER_PUNCTUATION_PAUSE_FRAMES: i64 = 3;
 
 #[derive(Clone, Debug)]
 pub struct LineSpan {
@@ -83,6 +90,38 @@ fn jitter(frame: u32, seed: u32) -> f64 {
     ((h & 0xffff) as f64) / 65_535.0
 }
 
+fn presentation_slot_x(slot: i64, width: u32) -> f64 {
+    let index = slot.clamp(1, 6) as usize - 1;
+    width as f64 / 2.0 + PRESENTATION_SLOT_OFFSETS[index] / 1920.0 * width as f64
+}
+
+fn legacy_slot_x(slot: i64, width: u32) -> f64 {
+    let index = slot.clamp(0, 2) as usize;
+    width as f64 * LEGACY_SLOT_RATIOS[index]
+}
+
+fn typewriter_state(text: &str, local_frame: i64) -> (String, bool) {
+    let graphemes: Vec<&str> = UnicodeSegmentation::graphemes(text, true).collect();
+    let mut budget = local_frame.max(0);
+    let mut reveal_count = 0_usize;
+    for grapheme in &graphemes {
+        let extra = if *grapheme == "\n" {
+            TYPEWRITER_NEWLINE_PAUSE_FRAMES
+        } else if "，。！？；：、,.!?;:".contains(grapheme) {
+            TYPEWRITER_PUNCTUATION_PAUSE_FRAMES
+        } else {
+            0
+        };
+        let cost = 1 + extra;
+        if budget < cost {
+            break;
+        }
+        budget -= cost;
+        reveal_count += 1;
+    }
+    (graphemes[..reveal_count].concat(), reveal_count >= graphemes.len())
+}
+
 /// 按 path 在 frame 处求值 → SceneDescriptor。
 pub fn evaluate(project: &Project, path: &[String], frame: u32) -> SceneDescriptor {
     let w = project.canvas.width;
@@ -95,6 +134,7 @@ pub fn evaluate(project: &Project, path: &[String], frame: u32) -> SceneDescript
     let camera = crate::timeline::CameraDesc { x: 0.0, y: 0.0, zoom: 1.0 };
     let mut layers = Vec::new();
     let mut subtitles = Vec::new();
+    let mut presentation_dialogues = Vec::new();
     let mut effects = Vec::new();
     let mut audio = Vec::new();
 
@@ -139,12 +179,12 @@ pub fn evaluate(project: &Project, path: &[String], frame: u32) -> SceneDescript
             crop: crate::timeline::CropDesc { left: 0.0, right: 0.0, top: 0.0, bottom: 0.0 },
             flip_x: false,
             flash: 0.0,
+            z_index: Some(0),
         });
     }
 
-    // 角色层（槽位：左/中/右；动作摆动）
-    let slot_x = [w as f64 * 0.26, w as f64 * 0.5, w as f64 * 0.74];
-    for ch in &line.characters {
+    // 角色层：新行使用固定六槽；旧行缺少 startSlot/endSlot 时保持三槽兼容。
+    for (character_index, ch) in line.characters.iter().enumerate() {
         let (mut dx, mut dy) = (0.0, 0.0);
         let mut pulse = 1.0;
         let mut flash = 0.0;
@@ -159,27 +199,56 @@ pub fn evaluate(project: &Project, path: &[String], frame: u32) -> SceneDescript
             "flashWhite" => flash = (2.0 * std::f64::consts::PI * lf as f64 / 20.0).sin() * 0.5 + 0.5,
             _ => {}
         }
-        let base_scale = 0.9 * ch.scale.max(0.01) / (720.0 / h as f64);
+        let target_slot = ch.end_slot.or(ch.start_slot);
+        let target_x = target_slot.map(|slot| presentation_slot_x(slot, w)).unwrap_or_else(|| legacy_slot_x(ch.slot, w));
+        let start_x = ch.start_slot.map(|slot| presentation_slot_x(slot, w)).unwrap_or(target_x);
+        let move_duration = ch.move_duration_frames.unwrap_or_else(|| (fps as f64 * AA_MOVE_SECONDS).round() as i64).max(1);
+        let easing = Easing {
+            easing_type: ch.move_easing.clone().unwrap_or_else(|| "easeInOut".into()),
+            c1: None,
+            c2: None,
+        };
+        let move_t = apply_easing((lf as f64 / move_duration as f64).clamp(0.0, 1.0), &easing);
+        let x = start_x + (target_x - start_x) * move_t;
+        let mut opacity = 1.0;
+        match ch.appear.as_deref() {
+            Some("hide") => opacity = 0.0,
+            Some("fadeOut") if move_t >= 1.0 => opacity = 0.0,
+            _ => {}
+        }
+        let mut luminance = ch.luminance.unwrap_or(if ch.highlighted == Some(false) { AA_STANDBY_LUMINANCE } else { 1.0 }).clamp(0.0, 1.0);
+        match ch.appear.as_deref() {
+            Some("fadeIn") => luminance *= move_t,
+            Some("fadeOut") => luminance *= 1.0 - move_t,
+            _ => {}
+        }
+        let closeup_scale = if ch.closeup { 1.12 } else { 1.0 };
+        let base_scale = 0.9 * ch.scale.max(0.01) * closeup_scale / (720.0 / h as f64);
+        let z_index = if ch.on_top { 2_000 } else if ch.closeup { 1_500 } else { 100 + target_slot.unwrap_or(ch.slot) };
+        let tint = (255.0 * luminance).round() as u8;
         layers.push(crate::timeline::LayerDesc {
-            id: format!("char_{}_{}", ch.asset_id, span.node_id),
+            id: format!("char_{}_{}_{}_{}", ch.asset_id, ch.end_slot.unwrap_or(ch.slot), character_index, span.node_id),
             kind: "image",
             asset_id: ch.asset_id.clone(),
-            x: slot_x[ch.slot.clamp(0, 2) as usize] + dx,
-            y: h as f64 * 0.58 + dy,
+            x: x + dx,
+            y: h as f64 * if ch.closeup { 0.6 } else { 0.58 } + dy,
             scale_x: base_scale * pulse,
             scale_y: base_scale * pulse,
             rotation: 0.0,
-            opacity: 1.0,
-            tint: [255, 255, 255],
+            opacity,
+            tint: [tint, tint, tint],
             blur: 0.0,
             crop: crate::timeline::CropDesc { left: 0.0, right: 0.0, top: 0.0, bottom: 0.0 },
             flip_x: false,
             flash,
+            z_index: Some(z_index),
         });
     }
+    layers.sort_by_key(|layer| layer.z_index.unwrap_or(0));
 
     // 字幕（说话人 + 台词；地点文本作为副标题）
     if !line.text.is_empty() {
+        let (visible_text, reveal_complete) = typewriter_state(&line.text, lf);
         let speaker_line = if line.speaker.is_empty() {
             line.text.clone()
         } else {
@@ -200,6 +269,21 @@ pub fn evaluate(project: &Project, path: &[String], frame: u32) -> SceneDescript
             align: "center".into(),
             outline_width: 4.0,
             opacity: 1.0,
+        });
+        presentation_dialogues.push(PresentationDialogue {
+            id: format!("dialogue_{}", line.id),
+            text: line.text.clone(),
+            speaker: line.speaker.clone(),
+            club_name: line.club_name.clone(),
+            place_text: line.place_text.clone(),
+            x: 92.0,
+            name_y: h as f64 - 258.0,
+            body_y: h as f64 - 194.0,
+            font_size: 48.0,
+            opacity: 1.0,
+            outline_width: 4.0,
+            visible_text,
+            reveal_complete,
         });
     }
 
@@ -259,6 +343,7 @@ pub fn evaluate(project: &Project, path: &[String], frame: u32) -> SceneDescript
         camera,
         layers,
         subtitles,
+        presentation_dialogues,
         effects,
         audio,
     }
@@ -274,6 +359,7 @@ fn empty_desc(project: &Project, frame: u32, total: u32) -> SceneDescriptor {
         camera: crate::timeline::CameraDesc { x: 0.0, y: 0.0, zoom: 1.0 },
         layers: Vec::new(),
         subtitles: Vec::new(),
+        presentation_dialogues: Vec::new(),
         effects: Vec::new(),
         audio: Vec::new(),
     }
@@ -348,6 +434,8 @@ mod tests {
         let desc = evaluate(&project, &path, 180);
         assert!(!desc.subtitles.is_empty());
         assert!(desc.subtitles[0].text.contains("领航员"));
+        assert_eq!(desc.presentation_dialogues[0].club_name, "StoryForge");
+        assert_eq!(desc.presentation_dialogues[0].place_text, "");
         // 背景状态继承（对话行未指定背景 → 仍显示开场背景）
         assert!(desc.layers.iter().any(|l| l.asset_id == "ast_bg"));
     }
@@ -366,5 +454,52 @@ mod tests {
         ];
         let desc = evaluate(&project, &path, 370);
         assert!(desc.subtitles[0].text.contains("直接结束"));
+    }
+
+    #[test]
+    fn presentation_dialogue_keeps_place_separate_from_club() {
+        let project = demo_project("presentation");
+        let path = vec![
+            "nd_entry".to_string(),
+            "nd_open".to_string(),
+            "nd_dialog".to_string(),
+            "nd_choice".to_string(),
+            "nd_branchA".to_string(),
+            "nd_exit".to_string(),
+        ];
+        let desc = evaluate(&project, &path, 255);
+        assert_eq!(desc.presentation_dialogues.len(), 1);
+        assert_eq!(desc.presentation_dialogues[0].club_name, "StoryForge");
+        assert_eq!(desc.presentation_dialogues[0].place_text, "广场·夜晚");
+        assert!(!desc.presentation_dialogues[0].text.contains("广场·夜晚"));
+        assert_eq!(desc.presentation_dialogues[0].font_size, 48.0);
+        assert_eq!(desc.presentation_dialogues[0].body_y, 886.0);
+    }
+
+    #[test]
+    fn six_slot_presentation_dims_standby_and_keeps_highlight_on_top() {
+        let project = demo_project("six-slots");
+        let path = linearize_default_path(&project.script);
+        let desc = evaluate(&project, &path, 180);
+        let characters: Vec<_> = desc.layers.iter().filter(|layer| layer.id.starts_with("char_")).collect();
+        assert_eq!(characters.len(), 6);
+        assert!((characters.first().unwrap().x - 35.0).abs() < 1e-6);
+        let highlighted = characters.iter().find(|layer| layer.tint == [255, 255, 255]).unwrap();
+        assert!((highlighted.x - 775.0).abs() < 1e-6);
+        assert_eq!(highlighted.z_index, Some(2_000));
+        assert_eq!(characters.iter().filter(|layer| layer.tint == [153, 153, 153]).count(), 5);
+    }
+
+    #[test]
+    fn typewriter_is_grapheme_safe_and_pauses_after_newline() {
+        let (visible, complete) = typewriter_state("A👩‍🚀中", 2);
+        assert_eq!(visible, "A👩‍🚀");
+        assert!(!complete);
+        let (visible, complete) = typewriter_state("甲\n乙", 8);
+        assert_eq!(visible, "甲\n");
+        assert!(!complete);
+        let (visible, complete) = typewriter_state("甲\n乙", 9);
+        assert_eq!(visible, "甲\n乙");
+        assert!(complete);
     }
 }

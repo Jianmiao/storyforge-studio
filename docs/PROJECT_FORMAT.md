@@ -59,6 +59,7 @@
 | `id` | string | 如 `ln_xxxx` |
 | `text` | string | 台词 / 演出文本（空 = 无字幕） |
 | `speaker` | string | 说话人显示名 |
+| `clubName` | string | 说话人所属社团/组织，运行时姓名牌以蓝色副标题显示 |
 | `characters` | CharacterLineRef[] | 该行在场角色 |
 | `bgAssetId` | string? | 背景素材；null = 保持上一行 |
 | `bgEffect` | `none \| blur` | 背景特效 |
@@ -67,16 +68,25 @@
 | `soundAssetId` | string? | 音效素材；null = 无 |
 | `transition` | `none \| fade` | 行首转场（fade = 黑场淡入 15 帧） |
 | `durationFrames` | number | 该行持续帧数（播放/导出按帧求值） |
-| `placeText` | string | 地点文本（字幕副标题） |
+| `placeText` | string | 地点文本（独立地点标签，不再冒充社团名） |
+
+节点剧本求值还会输出 `SceneDescriptor.presentationDialogues[]`，把姓名、社团、地点和正文分开供鉴赏播放层绘制；旧 `subtitles[]` 继续保留给时间轴兼容模式和旧消费者。
 
 ### 3.4 CharacterLineRef
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `assetId` | string | 角色图片素材 |
-| `slot` | 0 \| 1 \| 2 | 槽位：左 / 中 / 右 |
+| `slot` | 0 \| 1 \| 2 | 旧工程三槽：左 / 中 / 右；新工程仍保留用于兼容 |
 | `action` | `none \| sway \| shake \| jump \| pulse \| flashWhite` | 待机动作 |
 | `scale` | number | 缩放（1 = 原尺寸） |
+| `startSlot` / `endSlot` | 1..6? | 固定六槽起止位置；任一字段存在即启用六槽语义 |
+| `appear` | string? | `none \| fadeIn \| fadeOut \| hide \| move` |
+| `moveDurationFrames` | number? | 移动时长；缺失为 0.5 秒 |
+| `moveEasing` | EasingType? | 缺失为 `easeInOut` |
+| `highlighted` / `luminance` | boolean? / 0..1? | 高亮与显式亮度；未高亮默认 0.6 |
+| `onTop` / `closeup` | boolean? | 顶层与近景状态 |
+| `faceId` / `shapeOverride` | string? | 适配器保留的表情与形态标识 |
 
 ## 4. 求值语义（Rust `graph` + `timeline`，预览/导出共享）
 
@@ -85,8 +95,8 @@
 3. **按帧求值** `evaluate(project, path, frame)`：
    - 定位 `frame` 所在行；行内局部帧 `lf`。
    - **背景 / BGM 状态继承**：取当前行及之前最近的 `bgAssetId` / `bgmAssetId`（未指定即保持）。
-   - 背景层铺满画布；角色按槽位摆放（左/中/右），动作摆动（sway 正弦 / shake 抖动 / jump 抛物线 / pulse 缩放脉冲 / flashWhite 白闪）。
-   - 字幕：`speaker：text`（placeText 非空时作为副标题行）。
+   - 背景层铺满画布；旧角色按三槽摆放，新角色按固定六槽摆放；求值器输出进退场、0.6 待机亮度、近景与稳定层级。待机动作包括 sway / shake / jump / pulse / flashWhite。
+   - 结构化对白按 Unicode grapheme 逐字显示，标点与换行有确定性停顿；姓名、社团、地点、正文和完成光标独立绘制。
    - 转场：行首 `fade` → 前 15 帧黑场淡入（transition effect）。
    - 背景特效 `blur` → 全屏模糊 effect。
    - 音频：BGM 从设置行持续到结尾（淡入 30 帧 / 淡出 60 帧）；语音/音效在行区间内播放。

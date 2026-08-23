@@ -498,6 +498,7 @@ function NodeProps({ node, doc }: { node: GraphNode; doc: StudioProject }) {
                     id: newId("ln"),
                     text: "",
                     speaker: "",
+                    clubName: "",
                     characters: [],
                     bgAssetId: null,
                     bgEffect: "none",
@@ -703,6 +704,10 @@ function LineProps({ node, line, doc }: { node: GraphNode; line: ScriptLine; doc
         <div className="prop-row">
           <label>说话人</label>
           <input type="text" value={line.speaker} onChange={(e) => update({ ...line, speaker: e.target.value })} />
+        </div>
+        <div className="prop-row">
+          <label>社团名</label>
+          <input type="text" value={line.clubName} onChange={(e) => update({ ...line, clubName: e.target.value })} placeholder="姓名牌蓝色副标题" />
         </div>
         <div className="prop-row">
           <label>地点</label>

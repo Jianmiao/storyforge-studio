@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Crosshair, Maximize2, Minimize2 } from "lucide-react";
+import { Crosshair, Maximize2, Minimize2, Type } from "lucide-react";
 import { useStore } from "../state/store";
 import { PixiRenderer } from "../preview/pixiRenderer";
 import type { RendererAdapter } from "../preview/RendererAdapter";
@@ -8,6 +8,8 @@ import { commitPropValue } from "./PropertiesPanel";
 import { findClipInScene } from "../domain/types";
 import type { Scene } from "../domain/types";
 import { IconButton } from "./ui/IconButton";
+import { loadPreviewFont, parsePreviewFontMode, previewFonts, type PreviewFontMode } from "../preview/previewFonts";
+import { getBackend } from "../backend";
 
 /** 预览浮窗：PixiJS 渲染 + 编辑覆盖层（选中框 / 拖拽 / 参考线）。 */
 export function CanvasView() {
@@ -25,9 +27,13 @@ export function CanvasView() {
   } | null>(null);
   const [selectionBox, setSelectionBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [showGuides, setShowGuides] = useState(true);
+  const [fontMode, setFontMode] = useState<PreviewFontMode>(() => parsePreviewFontMode(localStorage.getItem("sf:preview-font")));
+  const fontModeRef = useRef(fontMode);
   const [hostSize, setHostSize] = useState({ w: 0, h: 0 });
+  const [rendererReady, setRendererReady] = useState(false);
 
   const document = useStore((s) => s.document);
+  const projectPath = useStore((s) => s.projectPath);
   const activeSceneId = useStore((s) => s.activeSceneId);
   const playhead = useStore((s) => s.playhead);
   const selectedClipId = useStore((s) => s.selectedClipId);
@@ -43,11 +49,13 @@ export function CanvasView() {
     void (async () => {
       const renderer = new PixiRenderer();
       await renderer.init(host, host.clientWidth, host.clientHeight);
+      renderer.setFontFamily(await loadPreviewFont(fontModeRef.current));
       if (disposed) {
         renderer.dispose();
         return;
       }
       rendererRef.current = renderer;
+      setRendererReady(true);
       await renderCurrentFrame(renderer);
     })();
     return () => {
@@ -56,6 +64,56 @@ export function CanvasView() {
       rendererRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    fontModeRef.current = fontMode;
+    localStorage.setItem("sf:preview-font", fontMode);
+    void (async () => {
+      const family = await loadPreviewFont(fontMode);
+      rendererRef.current?.setFontFamily(family);
+      await renderCurrentFrame(rendererRef.current);
+    })();
+  }, [fontMode]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!document || !renderer) return;
+    let cancelled = false;
+    void (async () => {
+      const backend = await getBackend();
+      const projectDir = projectPath ? projectPath.replace(/[\\/][^\\/]+$/, "") : "";
+      const urls: Record<string, string> = {};
+      await Promise.all(document.assets.filter((asset) => asset.kind === "image").map(async (asset) => {
+        try {
+          const url = await backend.getAssetUrl(projectDir, asset);
+          if (url) urls[asset.id] = url;
+        } catch {
+          // 缺失素材由资源诊断负责；预览保持可用。
+        }
+      }));
+      if (cancelled) return;
+      await renderer.setAssetUrls(urls);
+      await renderCurrentFrame(renderer);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [document, projectPath, rendererReady]);
+
+  // 全屏鉴赏切换会改变宿主布局，主动同步 Pixi 尺寸，避免继续使用小预览的缩放矩阵。
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const sync = () => {
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      setHostSize({ w, h });
+      rendererRef.current?.resize(w, h);
+      void renderCurrentFrame(rendererRef.current);
+    };
+    const frame = requestAnimationFrame(sync);
+    return () => cancelAnimationFrame(frame);
+  }, [expanded]);
 
   // 尺寸观察
   useEffect(() => {
@@ -209,9 +267,24 @@ export function CanvasView() {
     <div className={`preview-dock ${expanded ? "expanded" : ""}`} data-testid="canvas">
       <div className="preview-dock-head">
         <span style={{ fontSize: 11, color: "var(--text-2)", fontWeight: 600 }}>预览</span>
-        <IconButton tip={expanded ? "收起预览（回到节点编辑）" : "展开预览"} onClick={() => setExpanded(!expanded)}>
-          {expanded ? <Minimize2 /> : <Maximize2 />}
-        </IconButton>
+        <div style={{ display: "flex", gap: 4 }}>
+          <label className="preview-font-control" title="鉴赏字体">
+            <Type aria-hidden="true" />
+            <select
+              aria-label="鉴赏字体"
+              data-testid="preview-font-select"
+              value={fontMode}
+              onChange={(event) => setFontMode(event.target.value as PreviewFontMode)}
+            >
+              {Object.entries(previewFonts).map(([mode, definition]) => (
+                <option key={mode} value={mode}>{definition.label}</option>
+              ))}
+            </select>
+          </label>
+          <IconButton tip={expanded ? "收起预览（回到节点编辑）" : "展开预览"} onClick={() => setExpanded((value) => !value)}>
+            {expanded ? <Minimize2 /> : <Maximize2 />}
+          </IconButton>
+        </div>
       </div>
       <div
         className="canvas-host"

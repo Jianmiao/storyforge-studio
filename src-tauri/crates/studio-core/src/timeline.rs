@@ -27,6 +27,7 @@ pub struct SceneDescriptor {
     pub camera: CameraDesc,
     pub layers: Vec<LayerDesc>,
     pub subtitles: Vec<SubtitleDesc>,
+    pub presentation_dialogues: Vec<PresentationDialogue>,
     pub effects: Vec<EffectDesc>,
     pub audio: Vec<AudioDesc>,
 }
@@ -56,6 +57,8 @@ pub struct LayerDesc {
     pub crop: CropDesc,
     pub flip_x: bool,
     pub flash: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub z_index: Option<i64>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -79,6 +82,24 @@ pub struct SubtitleDesc {
     pub align: String,
     pub outline_width: f64,
     pub opacity: f64,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PresentationDialogue {
+    pub id: String,
+    pub text: String,
+    pub speaker: String,
+    pub club_name: String,
+    pub place_text: String,
+    pub x: f64,
+    pub name_y: f64,
+    pub body_y: f64,
+    pub font_size: f64,
+    pub opacity: f64,
+    pub outline_width: f64,
+    pub visible_text: String,
+    pub reveal_complete: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -291,6 +312,7 @@ pub fn evaluate(project: &Project, scene: &Scene, frame: u32) -> SceneDescriptor
         camera,
         layers,
         subtitles,
+        presentation_dialogues: Vec::new(),
         effects,
         audio,
     }
@@ -385,6 +407,7 @@ fn eval_image(c: &ImageClip, lf: i64) -> LayerDesc {
         },
         flip_x,
         flash,
+        z_index: None,
     }
 }
 

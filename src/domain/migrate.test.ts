@@ -81,6 +81,21 @@ describe("项目迁移", () => {
     expect(doc.formatVersion).toBe(2);
   });
 
+  it("v2 旧节点行缺少 clubName 时补空字符串", () => {
+    const doc = migrateProject({
+      formatVersion: 2,
+      meta: { name: "x" },
+      canvas: { width: 100, height: 100, fps: 30 },
+      assets: [],
+      scenes: [],
+      script: {
+        entryNodeId: "n1",
+        nodes: [{ id: "n1", type: "script", x: 0, y: 0, title: "S", next: [], lines: [{ id: "l1", text: "x", speaker: "", characters: [], bgAssetId: null, bgEffect: "none", bgmAssetId: null, voiceAssetId: null, soundAssetId: null, transition: "none", durationFrames: 1, placeText: "" }] }],
+      },
+    });
+    expect(doc.script.nodes[0].lines?.[0].clubName).toBe("");
+  });
+
   it("更高版本拒绝打开", () => {
     expect(() => migrateProject({ formatVersion: 99 })).toThrow(/高于当前/);
   });
