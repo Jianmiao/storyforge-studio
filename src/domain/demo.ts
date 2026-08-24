@@ -104,7 +104,6 @@ export function buildDemoProject(now: string): StudioProject {
                 { assetId: "ast_char", slot: 1, endSlot: 3, action: "none", scale: 0.9, highlighted: true, onTop: true },
                 { assetId: "ast_char", slot: 1, endSlot: 4, action: "none", scale: 0.86, highlighted: false },
                 { assetId: "ast_char", slot: 2, endSlot: 5, action: "sway", scale: 0.82, highlighted: false },
-                { assetId: "ast_char", slot: 2, endSlot: 6, action: "none", scale: 0.78, highlighted: false },
               ],
               bgAssetId: null,
               bgEffect: "none",

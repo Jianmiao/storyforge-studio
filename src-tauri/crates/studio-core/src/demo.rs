@@ -244,7 +244,6 @@ fn demo_graph() -> ScriptGraph {
                         presentation_char_ref(3, true, 0.9),
                         presentation_char_ref(4, false, 0.86),
                         presentation_char_ref(5, false, 0.82),
-                        presentation_char_ref(6, false, 0.78),
                     ],
                     None,
                     "none",

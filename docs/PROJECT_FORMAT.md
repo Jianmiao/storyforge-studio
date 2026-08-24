@@ -80,7 +80,7 @@
 | `slot` | 0 \| 1 \| 2 | 旧工程三槽：左 / 中 / 右；新工程仍保留用于兼容 |
 | `action` | `none \| sway \| shake \| jump \| pulse \| flashWhite` | 待机动作 |
 | `scale` | number | 缩放（1 = 原尺寸） |
-| `startSlot` / `endSlot` | 1..6? | 固定六槽起止位置；任一字段存在即启用六槽语义 |
+| `startSlot` / `endSlot` | 1..5? | 固定五槽起止位置；任一字段存在即启用五槽语义 |
 | `appear` | string? | `none \| fadeIn \| fadeOut \| hide \| move` |
 | `moveDurationFrames` | number? | 移动时长；缺失为 0.5 秒 |
 | `moveEasing` | EasingType? | 缺失为 `easeInOut` |
@@ -95,7 +95,7 @@
 3. **按帧求值** `evaluate(project, path, frame)`：
    - 定位 `frame` 所在行；行内局部帧 `lf`。
    - **背景 / BGM 状态继承**：取当前行及之前最近的 `bgAssetId` / `bgmAssetId`（未指定即保持）。
-   - 背景层铺满画布；旧角色按三槽摆放，新角色按固定六槽摆放；求值器输出进退场、0.6 待机亮度、近景与稳定层级。待机动作包括 sway / shake / jump / pulse / flashWhite。
+   - 背景层铺满画布；旧角色按三槽摆放，新角色按 AA 兼容的固定五槽摆放；求值器输出进退场、0.6 待机亮度、近景与稳定层级。待机动作包括 sway / shake / jump / pulse / flashWhite。
    - 结构化对白按 Unicode grapheme 逐字显示，标点与换行有确定性停顿；姓名、社团、地点、正文和完成光标独立绘制。
    - 转场：行首 `fade` → 前 15 帧黑场淡入（transition effect）。
    - 背景特效 `blur` → 全屏模糊 effect。

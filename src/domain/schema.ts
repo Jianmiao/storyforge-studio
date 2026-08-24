@@ -129,8 +129,8 @@ function validateScriptGraph(doc: StudioProject, assetIds: Set<string>, errors: 
             errors.push(`演出行 ${line.id} 引用不存在的角色素材 ${ch.assetId}`);
           }
           for (const [name, value] of [["startSlot", ch.startSlot], ["endSlot", ch.endSlot]] as const) {
-            if (value !== undefined && (!Number.isInteger(value) || value < 1 || value > 6)) {
-              errors.push(`演出行 ${line.id} 的 ${name} 必须是 1..6`);
+            if (value !== undefined && (!Number.isInteger(value) || value < 1 || value > 5)) {
+              errors.push(`演出行 ${line.id} 的 ${name} 必须是 1..5`);
             }
           }
           if (ch.moveDurationFrames !== undefined && !(ch.moveDurationFrames > 0)) {

@@ -73,7 +73,7 @@ pub struct CharacterLineRef {
     /// 待机动作：none | sway | shake | jump | pulse | flashWhite。
     pub action: String,
     pub scale: f64,
-    /// AA 语义六槽（1..6）；缺失时继续按旧三槽解释 slot。
+    /// AA 语义五槽（1..5）；缺失时继续按旧三槽解释 slot。
     #[serde(default)]
     pub start_slot: Option<i64>,
     #[serde(default)]

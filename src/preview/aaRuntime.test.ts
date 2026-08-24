@@ -20,14 +20,14 @@ describe("AA presentation runtime", () => {
     expect(legacySlotX(2, 1920)).toBeCloseTo(1420.8);
   });
 
-  it("provides six stable AI-addressable slots across the AA foreground range", () => {
-    expect(Array.from({ length: 6 }, (_, i) => presentationSlotX(i + 1, 1920))).toEqual([
-      35, 405, 775, 1145, 1515, 1885,
+  it("provides five stable AI-addressable slots matching the AA foreground range", () => {
+    expect(Array.from({ length: 5 }, (_, i) => presentationSlotX(i + 1, 1920))).toEqual([
+      35, 525, 960, 1395, 1885,
     ]);
   });
 
   it("moves with eased half-second timing and applies standby luminance", () => {
-    const ref = character({ startSlot: 1, endSlot: 6, highlighted: false, moveDurationFrames: 15 });
+    const ref = character({ startSlot: 1, endSlot: 5, highlighted: false, moveDurationFrames: 15 });
     const start = evaluateCharacterPresentation(ref, 0, 30, 1920, 1080);
     const middle = evaluateCharacterPresentation(ref, 7.5, 30, 1920, 1080);
     const end = evaluateCharacterPresentation(ref, 15, 30, 1920, 1080);

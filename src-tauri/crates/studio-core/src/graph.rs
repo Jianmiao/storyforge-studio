@@ -10,7 +10,7 @@ use unicode_segmentation::UnicodeSegmentation;
 pub const ACTION_FADE_FRAMES: i64 = 15;
 pub const AA_STANDBY_LUMINANCE: f64 = 0.6;
 pub const AA_MOVE_SECONDS: f64 = 0.5;
-const PRESENTATION_SLOT_OFFSETS: [f64; 6] = [-925.0, -555.0, -185.0, 185.0, 555.0, 925.0];
+const PRESENTATION_SLOT_OFFSETS: [f64; 5] = [-925.0, -435.0, 0.0, 435.0, 925.0];
 const LEGACY_SLOT_RATIOS: [f64; 3] = [0.26, 0.5, 0.74];
 const TYPEWRITER_NEWLINE_PAUSE_FRAMES: i64 = 6;
 const TYPEWRITER_PUNCTUATION_PAUSE_FRAMES: i64 = 3;
@@ -91,7 +91,7 @@ fn jitter(frame: u32, seed: u32) -> f64 {
 }
 
 fn presentation_slot_x(slot: i64, width: u32) -> f64 {
-    let index = slot.clamp(1, 6) as usize - 1;
+    let index = slot.clamp(1, 5) as usize - 1;
     width as f64 / 2.0 + PRESENTATION_SLOT_OFFSETS[index] / 1920.0 * width as f64
 }
 
@@ -183,7 +183,7 @@ pub fn evaluate(project: &Project, path: &[String], frame: u32) -> SceneDescript
         });
     }
 
-    // 角色层：新行使用固定六槽；旧行缺少 startSlot/endSlot 时保持三槽兼容。
+    // 角色层：新行使用固定五槽；旧行缺少 startSlot/endSlot 时保持三槽兼容。
     for (character_index, ch) in line.characters.iter().enumerate() {
         let (mut dx, mut dy) = (0.0, 0.0);
         let mut pulse = 1.0;
@@ -477,17 +477,17 @@ mod tests {
     }
 
     #[test]
-    fn six_slot_presentation_dims_standby_and_keeps_highlight_on_top() {
-        let project = demo_project("six-slots");
+    fn five_slot_presentation_dims_standby_and_keeps_highlight_on_top() {
+        let project = demo_project("five-slots");
         let path = linearize_default_path(&project.script);
         let desc = evaluate(&project, &path, 180);
         let characters: Vec<_> = desc.layers.iter().filter(|layer| layer.id.starts_with("char_")).collect();
-        assert_eq!(characters.len(), 6);
+        assert_eq!(characters.len(), 5);
         assert!((characters.first().unwrap().x - 35.0).abs() < 1e-6);
         let highlighted = characters.iter().find(|layer| layer.tint == [255, 255, 255]).unwrap();
-        assert!((highlighted.x - 775.0).abs() < 1e-6);
+        assert!((highlighted.x - 960.0).abs() < 1e-6);
         assert_eq!(highlighted.z_index, Some(2_000));
-        assert_eq!(characters.iter().filter(|layer| layer.tint == [153, 153, 153]).count(), 5);
+        assert_eq!(characters.iter().filter(|layer| layer.tint == [153, 153, 153]).count(), 4);
     }
 
     #[test]

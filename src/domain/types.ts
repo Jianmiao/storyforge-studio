@@ -94,7 +94,7 @@ export interface CharacterLineRef {
   action: string;
   /** 缩放（1 = 原尺寸）。 */
   scale: number;
-  /** AA 语义六槽（1..6）；缺失时继续按旧三槽解释 slot。 */
+  /** AA 语义五槽（1..5）；缺失时继续按旧三槽解释 slot。 */
   startSlot?: number;
   endSlot?: number;
   /** 进入/退出可见性语义。 */

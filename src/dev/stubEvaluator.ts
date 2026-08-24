@@ -296,7 +296,7 @@ export function evaluateGraphFrame(
     });
   }
 
-  // 角色层：新行使用固定六槽；旧行缺少 startSlot/endSlot 时保持三槽兼容。
+  // 角色层：新行使用固定五槽；旧行缺少 startSlot/endSlot 时保持三槽兼容。
   for (const [characterIndex, ch] of line.characters.entries()) {
     const presentation = evaluateCharacterPresentation(ch, lf, fps, W, H);
     const sway = ch.action === "sway" ? Math.sin((2 * Math.PI * lf) / 60) * 5 : 0;

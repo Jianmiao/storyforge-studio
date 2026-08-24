@@ -4,10 +4,10 @@ import type { CharacterLineRef, EasingType } from "../domain/types";
 export const AA_FOREGROUND_SLOT_OFFSETS = [-925, -435, 0, 435, 925] as const;
 
 /**
- * StoryForge 的固定六槽适配。外缘严格沿用 AA 的可见范围，内部等距，便于 AI 直接选槽。
+ * StoryForge 的固定五槽适配。坐标直接沿用 AA 的五个可见前景槽，便于 AI 直接选槽。
  * 旧项目仍走三槽兼容映射，不会因该数组改变位置。
  */
-export const PRESENTATION_SLOT_OFFSETS = [-925, -555, -185, 185, 555, 925] as const;
+export const PRESENTATION_SLOT_OFFSETS = [-925, -435, 0, 435, 925] as const;
 export const AA_STANDBY_LUMINANCE = 0.6;
 export const AA_MOVE_SECONDS = 0.5;
 export const TYPEWRITER_FRAMES_PER_GRAPHEME = 1;
@@ -32,7 +32,7 @@ export interface TypewriterState {
 }
 
 export function presentationSlotX(slot: number, width: number): number {
-  const index = Math.max(1, Math.min(6, Math.trunc(slot))) - 1;
+  const index = Math.max(1, Math.min(5, Math.trunc(slot))) - 1;
   return width / 2 + (PRESENTATION_SLOT_OFFSETS[index] / 1920) * width;
 }
 
